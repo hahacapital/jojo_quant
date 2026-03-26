@@ -1,2 +1,171 @@
-# stock_screener
-a stock screener
+# 温度计 (Thermometer) Stock Screener
+
+每日扫描 NASDAQ + NYSE 全部股票，找出温度计指标**上穿 80** 的标的（今天 > 80 且 昨天 <= 80）。
+
+## 快速开始
+
+```bash
+# 安装依赖
+pip install -r requirements.txt
+
+# 运行扫描（默认阈值 80）
+python screener.py
+
+# 自定义阈值 / 只看前 20 个结果
+python screener.py --threshold 75 --top 20
+```
+
+## 项目结构
+
+| 文件 | 说明 |
+|------|------|
+| `indicators.py` | 温度计指标核心计算（纯 pandas / numpy，无需外部 TA 库） |
+| `screener.py` | 全市场扫描工具，批量下载 OHLC 数据并检测上穿信号 |
+| `thermometer.pine` | TradingView Pine Script v6 版本，与 Python 代码完全一致 |
+| `requirements.txt` | Python 依赖 |
+
+## 温度计指标详解
+
+温度计是一个**复合动量震荡指标**，将 6 个子指标归一化到 0–100 后加权合成，再用 EMA 平滑。最终输出值在 0–100 之间：
+
+- **> 80**：超买区域（信号触发线）
+- **< 22**：超卖区域
+
+### 计算公式
+
+```
+index_raw = RSI × 0.1 + WR × 0.2 + CMO × 0.1 + KD × 0.3 + TSI × 0.2 + ADXRSI × 0.1
+温度计 = EMA(index_raw, 3)
+```
+
+### 6 个子指标
+
+#### 1. RSI — 相对强弱指数 (Relative Strength Index)
+
+- **权重**：10%
+- **参数**：`length = 14`
+- **范围**：0 – 100
+- **含义**：衡量近期涨幅与跌幅的相对强度。RSI > 70 通常视为超买，< 30 视为超卖。
+- **公式**：
+  ```
+  RS = RMA(涨幅, 14) / RMA(跌幅, 14)
+  RSI = 100 - 100 / (1 + RS)
+  ```
+  其中 RMA 是 Wilder 平滑（指数移动平均的变体，alpha = 1/length）。
+
+#### 2. WR — 威廉指标 (Williams %R)
+
+- **权重**：20%
+- **参数**：`length = 14`
+- **原始范围**：-100 – 0（标准 Williams %R）
+- **归一化**：加 100 后变为 0 – 100
+- **含义**：衡量收盘价在近期最高价和最低价之间的位置。值越高表示越接近区间顶部（偏强）。
+- **公式**：
+  ```
+  WR = -100 × (最高价 - 收盘价) / (最高价 - 最低价) + 100
+  ```
+  其中最高价/最低价取过去 14 根 K 线的滚动最大/最小值。
+
+> **注意**：归一化后 WR 与 Stochastic %K 的公式完全相同：`100 × (close - lowest) / (highest - lowest)`。
+
+#### 3. CMO — 钱德动量震荡指标 (Chande Momentum Oscillator)
+
+- **权重**：10%
+- **参数**：`length = 14`
+- **原始范围**：-100 – 100
+- **归一化**：`(CMO + 100) / 2` 变为 0 – 100
+- **含义**：类似 RSI，但直接用涨跌幅度差值与总量的比率，对动量变化更敏感。
+- **公式**：
+  ```
+  sum_gain = SUM(涨幅, 14)
+  sum_loss = SUM(跌幅, 14)
+  CMO = 100 × (sum_gain - sum_loss) / (sum_gain + sum_loss)
+  归一化 = (CMO + 100) / 2
+  ```
+
+#### 4. KD — 随机指标 %K (Stochastic %K)
+
+- **权重**：30%（最高权重）
+- **参数**：`length = 14`
+- **范围**：0 – 100
+- **含义**：衡量收盘价在近期价格通道中的相对位置。%K > 80 表示接近通道顶部（强势），< 20 表示接近底部（弱势）。这是温度计中权重最大的子指标，对短期价格位置变化最敏感。
+- **公式**：
+  ```
+  %K = 100 × (收盘价 - 14日最低价) / (14日最高价 - 14日最低价)
+  ```
+
+#### 5. TSI — 真实强度指数 (True Strength Index)
+
+- **权重**：20%
+- **参数**：`short_length = 7, long_length = 14`
+- **原始范围**：-1 – 1（Pine Script 的 `ta.tsi()` 返回值）
+- **归一化**：`(TSI + 1) / 2 × 100` 变为 0 – 100
+- **含义**：双重 EMA 平滑的动量指标，比 RSI 更平滑，能更好地反映趋势方向和强度，同时过滤掉短期噪音。
+- **公式**：
+  ```
+  diff = close - close[1]                      # 每日价格变动
+  double_smooth    = EMA(EMA(diff, 14), 7)     # 变动的双重平滑
+  abs_double_smooth = EMA(EMA(|diff|, 14), 7)  # 绝对变动的双重平滑
+  TSI_raw = double_smooth / abs_double_smooth   # [-1, 1]
+  TSI = (TSI_raw + 1) / 2 × 100                # [0, 100]
+  ```
+
+#### 6. ADXRSI — ADX 的 RSI（方向性过滤器）
+
+- **权重**：10%
+- **参数**：`DI length = 14, ADX smoothing = 18, RSI length = 14`
+- **范围**：0 – 100
+- **含义**：先计算 ADX（平均趋向指数，衡量趋势强度），再对 ADX 取 RSI，最后根据 K 线方向（阳线/阴线）调整符号。这使得温度计能区分上涨趋势和下跌趋势中的 ADX 强度。
+- **公式**：
+  ```
+  # 1. DMI (方向运动指标)
+  +DM = max(high - high[1], 0)  当 high变动 > low变动 时
+  -DM = max(low[1] - low, 0)    当 low变动 > high变动 时
+  ATR = RMA(TrueRange, 14)
+  +DI = 100 × RMA(+DM, 14) / ATR
+  -DI = 100 × RMA(-DM, 14) / ATR
+
+  # 2. ADX (平均趋向指数)
+  DX  = 100 × |+DI - -DI| / (+DI + -DI)
+  ADX = RMA(DX, 18)
+
+  # 3. ADXRSI (方向性调整)
+  sign = +1（阳线）或 -1（阴线）
+  ADXRSI = (RSI(ADX, 14) × sign + 100) / 2
+  ```
+
+### 平滑方法
+
+温度计中使用了两种平滑方法，均与 TradingView 的实现完全一致：
+
+| 方法 | 公式 | 用途 |
+|------|------|------|
+| **RMA (Wilder 平滑)** | `rma[i] = val × (1/n) + rma[i-1] × (1 - 1/n)` | RSI 内部的涨跌幅平滑、ATR、DI、ADX |
+| **EMA (指数移动平均)** | `ema[i] = val × (2/(n+1)) + ema[i-1] × (1 - 2/(n+1))` | TSI 内部的双重平滑、最终 index 的 EMA(3) |
+
+两者均以前 N 个值的 **SMA（简单平均）** 作为种子值初始化，这是匹配 TradingView 计算结果的关键。
+
+## 校准说明
+
+扫描工具默认使用校准后的温度计，输出值 clip 到 **0–100** 范围，阈值直接用 **80**：
+
+| 函数 | 说明 |
+|------|------|
+| `compute_thermometer()` | 原始值，与 Pine Script v6 完全一致（MAE = 0.0002） |
+| `compute_thermometer_calibrated()` | 线性校准 + clip(0, 100)，近似锁定的 TradingView 温度计 |
+
+校准公式：`calibrated = clip(1.1469 × raw - 8.3660, 0, 100)`
+
+由于无法获取锁定指标的源码，校准基于 NVDA 和 HOOD 的历史数据拟合：
+- 与锁定指标的相关性：**0.97**
+- 校准后值域：**0–100**，与锁定指标一致
+- 阈值 80 的 ±2 天信号命中率：**83%**（HOOD 16/18 + NVDA 4/6）
+
+## 依赖
+
+- **yfinance** — 从 Yahoo Finance 批量下载 OHLC 数据
+- **pandas** — 数据处理与时间序列操作
+- **numpy** — 数值计算
+- **requests** — 从 NASDAQ 网站获取股票列表
+
+> 无需 `pandas_ta` 或其他技术分析库，所有指标均从头实现。

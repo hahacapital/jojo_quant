@@ -1,0 +1,23 @@
+//@version=6
+indicator("温度计_v6", overlay=false)
+
+len = input.int(14, "温度计回溯期数")
+
+// ---- Sub-indicators ----
+value_rsi = ta.rsi(close, len)
+value_wr  = ta.wpr(len) + 100
+value_cmo = (ta.cmo(close, len) + 100) / 2
+value_kd  = ta.stoch(close, high, low, len)
+value_tsi = (ta.tsi(close, math.round(len / 2), len) + 1) / 2 * 100
+
+[_, _, value_adx] = ta.dmi(len, len + 4)
+adxrsi = (ta.rsi(value_adx, 14) * math.sign(close - open) + 100) / 2
+
+// ---- Weighted composite ----
+index_raw = value_rsi * 0.1 + value_wr * 0.2 + value_cmo * 0.1 + value_kd * 0.3 + value_tsi * 0.2 + adxrsi * 0.1
+index = ta.ema(index_raw, 3)
+
+// ---- Plot ----
+plot(index, "温度计", color=color.blue, linewidth=2)
+hline(80, "超买", color=color.red,   linestyle=hline.style_dashed)
+hline(20, "超卖", color=color.green, linestyle=hline.style_dashed)
