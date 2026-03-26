@@ -1,6 +1,9 @@
 # 温度计 (Thermometer) Stock Screener
 
-每日扫描 NASDAQ + NYSE 全部股票，找出温度计指标**上穿 80** 的标的（今天 > 80 且 昨天 <= 80）。
+每日扫描 NASDAQ + NYSE 全部股票，基于温度计指标的两种策略选股：
+
+- **策略1 (超买动量)**：上穿 76 买入，回落下穿 68 卖出
+- **策略2 (超卖反转)**：下穿 28 后拐头向上买入，上穿 51 或再次下穿 28 卖出
 
 ## 快速开始
 
@@ -8,11 +11,13 @@
 # 安装依赖
 pip install -r requirements.txt
 
-# 运行扫描（默认阈值 80）
+# 每日选股（同时检测两种策略信号）
 python screener.py
+python screener.py --top 20
 
-# 自定义阈值 / 只看前 20 个结果
-python screener.py --threshold 75 --top 20
+# 历史回测
+python backtest.py TSLA NVDA HOOD --years 3
+python backtest.py --csv your_data.csv --use-tv  # 使用 TradingView 导出数据
 ```
 
 ## 项目结构
@@ -20,7 +25,8 @@ python screener.py --threshold 75 --top 20
 | 文件 | 说明 |
 |------|------|
 | `indicators.py` | 温度计指标核心计算（纯 pandas / numpy，无需外部 TA 库） |
-| `screener.py` | 全市场扫描工具，批量下载 OHLC 数据并检测上穿信号 |
+| `screener.py` | 全市场扫描工具，检测两种策略的买入信号 |
+| `backtest.py` | 历史回测，支持 yfinance 下载和 TradingView CSV |
 | `thermometer.pine` | TradingView Pine Script v6 版本，与 Python 代码完全一致 |
 | `requirements.txt` | Python 依赖 |
 
@@ -28,8 +34,10 @@ python screener.py --threshold 75 --top 20
 
 温度计是一个**复合动量震荡指标**，将 6 个子指标归一化到 0–100 后加权合成，再用 EMA 平滑。最终输出值在 0–100 之间：
 
-- **> 80**：超买区域（信号触发线）
-- **< 22**：超卖区域
+- **> 76**：超买区域（策略1买入线）
+- **68**：策略1卖出线
+- **51**：中线（策略2卖出线）
+- **< 28**：超卖区域（策略2买入区）
 
 ### 计算公式
 
@@ -145,21 +153,16 @@ index_raw = RSI × 0.1 + WR × 0.2 + CMO × 0.1 + KD × 0.3 + TSI × 0.2 + ADXRS
 
 两者均以前 N 个值的 **SMA（简单平均）** 作为种子值初始化，这是匹配 TradingView 计算结果的关键。
 
-## 校准说明
+## 阈值映射说明
 
-扫描工具默认使用校准后的温度计，输出值 clip 到 **0–100** 范围，阈值直接用 **80**：
+本项目的温度计基于参考 Pine Script 实现，与 TradingView 上锁定的温度计指标高度相关（corr=0.97）但数值有偏移。阈值通过分位数 + 线性回归映射：
 
-| 函数 | 说明 |
-|------|------|
-| `compute_thermometer()` | 原始值，与 Pine Script v6 完全一致（MAE = 0.0002） |
-| `compute_thermometer_calibrated()` | 线性校准 + clip(0, 100)，近似锁定的 TradingView 温度计 |
-
-校准公式：`calibrated = clip(1.1469 × raw - 8.3660, 0, 100)`
-
-由于无法获取锁定指标的源码，校准基于 NVDA 和 HOOD 的历史数据拟合：
-- 与锁定指标的相关性：**0.97**
-- 校准后值域：**0–100**，与锁定指标一致
-- 阈值 80 的 ±2 天信号命中率：**83%**（HOOD 16/18 + NVDA 4/6）
+| 锁定温度计 | 本项目温度计 | 用途 |
+|:---:|:---:|------|
+| 80 | **76** | 策略1买入 |
+| 70 | **68** | 策略1卖出 |
+| 50 | **51** | 策略2卖出 |
+| 22 | **28** | 策略2买入区 |
 
 ## 依赖
 

@@ -19,5 +19,7 @@ index = ta.ema(index_raw, 3)
 
 // ---- Plot ----
 plot(index, "温度计", color=color.blue, linewidth=2)
-hline(80, "超买", color=color.red,   linestyle=hline.style_dashed)
-hline(20, "超卖", color=color.green, linestyle=hline.style_dashed)
+hline(76, "超买", color=color.red,   linestyle=hline.style_dashed)
+hline(68, "卖出", color=color.orange, linestyle=hline.style_dashed)
+hline(51, "中线", color=color.gray,  linestyle=hline.style_dotted)
+hline(28, "超卖", color=color.green, linestyle=hline.style_dashed)
