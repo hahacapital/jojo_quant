@@ -254,6 +254,16 @@ def scan_signals(all_data: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, pd.Da
                          if hasattr(df.index[-1], "strftime") else str(df.index[-1]))
             last_close = float(df["close"].iloc[-1])
 
+            # Compute ATR%(14) for volatility filter
+            high = df["high"].astype(float).values
+            low = df["low"].astype(float).values
+            close_arr = df["close"].astype(float).values
+            prev_close = np.roll(close_arr, 1)
+            prev_close[0] = close_arr[0]
+            tr = np.maximum(high - low, np.maximum(np.abs(high - prev_close), np.abs(low - prev_close)))
+            atr = pd.Series(tr).rolling(14).mean().values
+            cur_atr_pct = atr[-1] / close_arr[-1] * 100 if close_arr[-1] > 0 else 0
+
             # --- Strategy 1: cross above 76 ---
             # Must simulate position state: only signal if NOT already in a trade
             # (i.e. previous cross above 76 must have been closed by crossing below 68)
@@ -273,6 +283,10 @@ def scan_signals(all_data: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, pd.Da
                     if vk < 68 and vk1 >= 68:
                         in_pos = False
 
+            # ATR% filter: skip low-volatility signals
+            if signal_today and cur_atr_pct < 2.0:
+                signal_today = False
+
             if signal_today:
                 s1_results.append({
                     "ticker": sym,
@@ -280,6 +294,7 @@ def scan_signals(all_data: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, pd.Da
                     "close": round(last_close, 2),
                     "thermometer": round(today, 2),
                     "prev": round(yesterday, 2),
+                    "atr_pct": round(cur_atr_pct, 2),
                 })
 
             # --- Strategy 2: below 28 zone, turning up ---
@@ -319,7 +334,7 @@ def scan_signals(all_data: dict[str, pd.DataFrame]) -> tuple[pd.DataFrame, pd.Da
 
     print(f"\r  Scanned {total} stocks ({errors} errors).                    ")
 
-    cols1 = ["ticker", "date", "close", "thermometer", "prev"]
+    cols1 = ["ticker", "date", "close", "thermometer", "prev", "atr_pct"]
     cols2 = ["ticker", "date", "close", "thermometer", "prev", "recent_low"]
 
     df1 = pd.DataFrame(s1_results, columns=cols1)
@@ -373,7 +388,7 @@ def main():
         s1 = s1.head(args.top)
         s2 = s2.head(args.top)
 
-    display_cols1 = ["ticker", "name", "sector", "industry", "mkt_cap_fmt", "close", "thermometer"]
+    display_cols1 = ["ticker", "name", "sector", "industry", "mkt_cap_fmt", "close", "thermometer", "atr_pct"]
     display_cols2 = ["ticker", "name", "sector", "industry", "mkt_cap_fmt", "close", "thermometer", "recent_low"]
 
     print()

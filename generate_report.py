@@ -251,99 +251,134 @@ def trade_detail_table(trades: list[Trade], regime: pd.Series) -> str:
     return "\n".join(lines)
 
 
+def _collect_strategy_section(all_results, regime, result_key):
+    """Collect trades and compute metrics for a strategy variant across all stocks.
+
+    result_key: index into each result tuple (e.g. 1 for r1, 2 for r2, etc.)
+    Returns (m_all, m_bull, m_bear, per_stock, per_stock_bull, per_stock_bear)
+    """
+    all_trades, bull_trades, bear_trades = [], [], []
+    per_stock, per_stock_bull, per_stock_bear = [], [], []
+
+    for item in all_results:
+        sym = item[0]
+        r = item[result_key]
+        trades = r.trades
+        sym_bull, sym_bear = [], []
+
+        for t in trades:
+            reg = get_trade_regime(t, regime)
+            all_trades.append(t)
+            if reg == "bull":
+                bull_trades.append(t)
+                sym_bull.append(t)
+            elif reg == "bear":
+                bear_trades.append(t)
+                sym_bear.append(t)
+
+        per_stock.append((sym, compute_metrics(trades)))
+        per_stock_bull.append((sym, compute_metrics(sym_bull)))
+        per_stock_bear.append((sym, compute_metrics(sym_bear)))
+
+    return (compute_metrics(all_trades), compute_metrics(bull_trades), compute_metrics(bear_trades),
+            per_stock, per_stock_bull, per_stock_bear)
+
+
+def _append_strategy_block(md, label, m_all, m_bull, m_bear, per_stock, per_stock_bull, per_stock_bear):
+    """Append a strategy metrics block (summary + per-stock tables) to md."""
+    md.append(f"### {label}\n")
+    md.append("#### 汇总指标\n")
+    md.append(metrics_table(m_all, m_bull, m_bear))
+    md.append("")
+    md.append("#### 个股汇总 — 整体\n")
+    md.append(per_stock_table(per_stock))
+    md.append("")
+    md.append("#### 个股汇总 — 牛市\n")
+    md.append(per_stock_table(per_stock_bull))
+    md.append("")
+    md.append("#### 个股汇总 — 熊市\n")
+    md.append(per_stock_table(per_stock_bear))
+    md.append("")
+
+
 def generate_report(all_results, regime, run_date):
-    """Build the full markdown report."""
+    """Build the full markdown report.
+
+    all_results: list of (sym, r1, r2, r1_opt, r2a_opt, r2b_opt) tuples
+    """
     md = []
     md.append(f"# 温度计 (Thermometer) 回测报告\n")
     md.append(f"**生成日期**: {run_date}")
     md.append(f"**回测区间**: {START_DATE} 至今")
     md.append(f"**股票数量**: {len(all_results)}")
-    md.append(f"**股票列表**: {', '.join(sym for sym, _, _ in all_results)}\n")
+    md.append(f"**股票列表**: {', '.join(item[0] for item in all_results)}\n")
 
     md.append("## 市场环境定义\n")
     md.append(f"- **牛市 (Bull)**: S&P 500 收盘价 >= SMA({SMA_LENGTH})")
     md.append(f"- **熊市 (Bear)**: S&P 500 收盘价 < SMA({SMA_LENGTH})\n")
 
-    for strat_idx, strat_name in [(0, "策略1: 超买动量 (上穿76买入 → 下穿68卖出)"),
-                                   (1, "策略2: 超卖反转 (下穿28拐头买入 → 上穿51或再穿28卖出)")]:
-        md.append(f"---\n\n## {strat_name}\n")
+    # --- Strategy 1 ---
+    md.append("---\n\n## 策略1: 超买动量 (上穿76买入 → 下穿68卖出)\n")
 
-        # Collect all trades across stocks, split by regime per stock
-        all_trades = []
-        bull_trades = []
-        bear_trades = []
-        per_stock = []
-        per_stock_bull = []
-        per_stock_bear = []
+    data = _collect_strategy_section(all_results, regime, 1)  # r1
+    _append_strategy_block(md, "原始版", *data)
 
-        for sym, r1, r2 in all_results:
-            r = r1 if strat_idx == 0 else r2
-            trades = r.trades
-            sym_bull = []
-            sym_bear = []
+    data_opt = _collect_strategy_section(all_results, regime, 3)  # r1_opt
+    _append_strategy_block(md, "优化版 (止损20% + ATR%≥2.0)", *data_opt)
 
-            for t in trades:
-                reg = get_trade_regime(t, regime)
-                all_trades.append(t)
-                if reg == "bull":
-                    bull_trades.append(t)
-                    sym_bull.append(t)
-                elif reg == "bear":
-                    bear_trades.append(t)
-                    sym_bear.append(t)
+    md.append("### 个股交易明细\n")
+    for item in all_results:
+        md.append(f"- [{item[0]}]({item[0]}.md)")
+    md.append("")
 
-            per_stock.append((sym, compute_metrics(trades)))
-            per_stock_bull.append((sym, compute_metrics(sym_bull)))
-            per_stock_bear.append((sym, compute_metrics(sym_bear)))
+    # --- Strategy 2 ---
+    md.append("---\n\n## 策略2: 超卖反转 (下穿28拐头买入 → 上穿51或再穿28卖出)\n")
 
-        # Aggregate metrics
-        m_all = compute_metrics(all_trades)
-        m_bull = compute_metrics(bull_trades)
-        m_bear = compute_metrics(bear_trades)
+    data = _collect_strategy_section(all_results, regime, 2)  # r2
+    _append_strategy_block(md, "原始版", *data)
 
-        md.append("### 汇总指标\n")
-        md.append(metrics_table(m_all, m_bull, m_bear))
-        md.append("")
+    data_a = _collect_strategy_section(all_results, regime, 4)  # r2a_opt
+    _append_strategy_block(md, "优化版A (止损20% + SPX趋势过滤)", *data_a)
 
-        md.append("### 个股汇总\n")
-        md.append("#### 整体\n")
-        md.append(per_stock_table(per_stock))
-        md.append("")
-        md.append("#### 牛市\n")
-        md.append(per_stock_table(per_stock_bull))
-        md.append("")
-        md.append("#### 熊市\n")
-        md.append(per_stock_table(per_stock_bear))
-        md.append("")
+    data_b = _collect_strategy_section(all_results, regime, 5)  # r2b_opt
+    _append_strategy_block(md, "优化版B (止损20% + 个股SMA50过滤)", *data_b)
 
-        # Link to per-stock detail files
-        md.append("### 个股交易明细\n")
-        for sym, _, _ in all_results:
-            md.append(f"- [{sym}]({sym}.md)")
-        md.append("")
+    md.append("### 个股交易明细\n")
+    for item in all_results:
+        md.append(f"- [{item[0]}]({item[0]}.md)")
+    md.append("")
 
     return "\n".join(md)
 
 
-def generate_stock_detail(sym, r1, r2, regime, run_date):
-    """Generate per-stock detail markdown with trade lists for both strategies."""
+def _detail_section(md, label, r, regime):
+    """Append a trade detail section for one strategy variant."""
+    md.append(f"### {label}\n")
+    if not r.trades:
+        md.append("*无交易*\n")
+        return
+    m = compute_metrics(r.trades)
+    md.append(f"**{m['num_trades']}笔交易 | 胜率 {m['win_rate']}% | "
+              f"累计收益 {m['total_pnl']}% | 盈亏比 {fmt_metric(m['profit_factor'])}**\n")
+    md.append(trade_detail_table(r.trades, regime))
+    md.append("")
+
+
+def generate_stock_detail(sym, r1, r2, r1_opt, r2a_opt, r2b_opt, regime, run_date):
+    """Generate per-stock detail markdown with trade lists for all strategy variants."""
     md = []
     md.append(f"# {sym} 交易明细\n")
     md.append(f"**生成日期**: {run_date}")
     md.append(f"[← 返回汇总报告](backtest_report.md)\n")
 
-    for strat_idx, strat_name in [(0, "策略1: 超买动量 (上穿76买入 → 下穿68卖出)"),
-                                   (1, "策略2: 超卖反转 (下穿28拐头买入 → 上穿51或再穿28卖出)")]:
-        r = r1 if strat_idx == 0 else r2
-        md.append(f"## {strat_name}\n")
-        if not r.trades:
-            md.append("*无交易*\n")
-            continue
-        m = compute_metrics(r.trades)
-        md.append(f"**{m['num_trades']}笔交易 | 胜率 {m['win_rate']}% | "
-                  f"累计收益 {m['total_pnl']}% | 盈亏比 {fmt_metric(m['profit_factor'])}**\n")
-        md.append(trade_detail_table(r.trades, regime))
-        md.append("")
+    md.append("## 策略1: 超买动量 (上穿76买入 → 下穿68卖出)\n")
+    _detail_section(md, "原始版", r1, regime)
+    _detail_section(md, "优化版 (止损20% + ATR%≥2.0)", r1_opt, regime)
+
+    md.append("## 策略2: 超卖反转 (下穿28拐头买入 → 上穿51或再穿28卖出)\n")
+    _detail_section(md, "原始版", r2, regime)
+    _detail_section(md, "优化版A (止损20% + SPX趋势过滤)", r2a_opt, regime)
+    _detail_section(md, "优化版B (止损20% + 个股SMA50过滤)", r2b_opt, regime)
 
     return "\n".join(md)
 
@@ -374,9 +409,11 @@ def main():
     all_results = []
     for sym, df in stock_data.items():
         try:
-            r1, r2 = run_backtest(sym, df)
-            all_results.append((sym, r1, r2))
-            print(f"  {sym}: S1={r1.num_trades} trades, S2={r2.num_trades} trades")
+            r1, r2, r1_opt, r2a_opt, r2b_opt = run_backtest(
+                sym, df, regime=regime, optimized=True)
+            all_results.append((sym, r1, r2, r1_opt, r2a_opt, r2b_opt))
+            print(f"  {sym}: S1={r1.num_trades}→{r1_opt.num_trades}, "
+                  f"S2={r2.num_trades}→A{r2a_opt.num_trades}/B{r2b_opt.num_trades}")
         except Exception as e:
             print(f"  {sym}: ERROR ({e})")
 
@@ -391,8 +428,8 @@ def main():
     print(f"  Main report: {REPORT_PATH} ({len(report)} chars)")
 
     # Per-stock detail files
-    for sym, r1, r2 in all_results:
-        detail = generate_stock_detail(sym, r1, r2, regime, run_date)
+    for sym, r1, r2, r1_opt, r2a_opt, r2b_opt in all_results:
+        detail = generate_stock_detail(sym, r1, r2, r1_opt, r2a_opt, r2b_opt, regime, run_date)
         detail_path = f"reports/{sym}.md"
         with open(detail_path, "w") as f:
             f.write(detail)

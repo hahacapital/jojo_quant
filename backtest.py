@@ -123,11 +123,16 @@ class StrategyResult:
 # Backtest engine
 # ---------------------------------------------------------------------------
 
-def backtest_strategy1(dates, closes, therm_vals) -> list[Trade]:
+def backtest_strategy1(dates, closes, therm_vals, *,
+                       stop_loss_pct=None, atr_pct=None, min_atr_pct=None) -> list[Trade]:
     """
     Strategy 1 (超买动量):
         BUY:  thermometer crosses above 76 (today > 76 AND yesterday <= 76)
         SELL: thermometer drops below 68 (today < 68 AND yesterday >= 68)
+
+    Optional optimizations:
+        stop_loss_pct: fixed stop loss percentage (e.g. 20 means -20%)
+        atr_pct + min_atr_pct: skip entry if ATR% < min_atr_pct
     """
     trades = []
     in_position = False
@@ -145,11 +150,33 @@ def backtest_strategy1(dates, closes, therm_vals) -> list[Trade]:
         if not in_position:
             # BUY signal: cross above 76
             if t_today > 76 and t_yesterday <= 76:
+                # ATR% filter
+                if min_atr_pct is not None and atr_pct is not None:
+                    if np.isnan(atr_pct[i]) or atr_pct[i] < min_atr_pct:
+                        continue
                 in_position = True
                 entry_date = str(dates[i])
                 entry_price = closes[i]
                 entry_idx = i
         else:
+            # Stop loss check (before normal exit)
+            if stop_loss_pct is not None:
+                pnl_now = (closes[i] / entry_price - 1) * 100
+                if pnl_now <= -stop_loss_pct:
+                    exit_price = closes[i]
+                    pnl = pnl_now
+                    trades.append(Trade(
+                        entry_date=entry_date,
+                        entry_price=round(entry_price, 2),
+                        exit_date=str(dates[i]),
+                        exit_price=round(exit_price, 2),
+                        holding_days=i - entry_idx,
+                        pnl_pct=round(pnl, 2),
+                        exit_reason=f"止损({stop_loss_pct}%)",
+                    ))
+                    in_position = False
+                    continue
+
             # SELL signal: drop below 68
             if t_today < 68 and t_yesterday >= 68:
                 exit_price = closes[i]
@@ -182,11 +209,16 @@ def backtest_strategy1(dates, closes, therm_vals) -> list[Trade]:
     return trades
 
 
-def backtest_strategy2(dates, closes, therm_vals) -> list[Trade]:
+def backtest_strategy2(dates, closes, therm_vals, *,
+                       stop_loss_pct=None, trend_filter=None) -> list[Trade]:
     """
     Strategy 2 (超卖反转):
         BUY:  thermometer was below 28, then turns up (today > yesterday, yesterday < 28)
         SELL: thermometer crosses above 51 OR drops below 28 again
+
+    Optional optimizations:
+        stop_loss_pct: fixed stop loss percentage (e.g. 20 means -20%)
+        trend_filter: boolean array, only enter when True
     """
     trades = []
     in_position = False
@@ -204,11 +236,32 @@ def backtest_strategy2(dates, closes, therm_vals) -> list[Trade]:
         if not in_position:
             # BUY: was below 28 and turning up
             if t_yesterday < 28 and t_today > t_yesterday:
+                # Trend filter
+                if trend_filter is not None and not trend_filter[i]:
+                    continue
                 in_position = True
                 entry_date = str(dates[i])
                 entry_price = closes[i]
                 entry_idx = i
         else:
+            # Stop loss check (before normal exit)
+            if stop_loss_pct is not None:
+                pnl_now = (closes[i] / entry_price - 1) * 100
+                if pnl_now <= -stop_loss_pct:
+                    exit_price = closes[i]
+                    pnl = pnl_now
+                    trades.append(Trade(
+                        entry_date=entry_date,
+                        entry_price=round(entry_price, 2),
+                        exit_date=str(dates[i]),
+                        exit_price=round(exit_price, 2),
+                        holding_days=i - entry_idx,
+                        pnl_pct=round(pnl, 2),
+                        exit_reason=f"止损({stop_loss_pct}%)",
+                    ))
+                    in_position = False
+                    continue
+
             # SELL: cross above 51
             if t_today > 51 and t_yesterday <= 51:
                 exit_price = closes[i]
@@ -259,7 +312,43 @@ def backtest_strategy2(dates, closes, therm_vals) -> list[Trade]:
 # Run backtest on one stock
 # ---------------------------------------------------------------------------
 
-def run_backtest(symbol: str, df: pd.DataFrame, therm_vals: np.ndarray = None) -> tuple[StrategyResult, StrategyResult]:
+def _compute_atr_pct(df: pd.DataFrame, closes: np.ndarray, start: int) -> np.ndarray:
+    """Compute ATR%(14) = ATR(14) / Close * 100."""
+    high = df["high"].astype(float).values
+    low = df["low"].astype(float).values
+    close = df["close"].astype(float).values
+    prev_close = np.roll(close, 1)
+    prev_close[0] = close[0]
+    tr = np.maximum(high - low, np.maximum(np.abs(high - prev_close), np.abs(low - prev_close)))
+    atr = pd.Series(tr).rolling(14).mean().values
+    atr_pct = atr / close * 100
+    return atr_pct[start:]
+
+
+def _build_regime_filter(dates, regime: pd.Series) -> np.ndarray:
+    """Build boolean array: True where regime is 'bull'."""
+    result = np.ones(len(dates), dtype=bool)
+    if regime is None:
+        return result
+    for i, d in enumerate(dates):
+        try:
+            dt = pd.Timestamp(str(d)[:10])
+            idx = regime.index.get_indexer([dt], method="ffill")
+            if idx[0] >= 0 and regime.iloc[idx[0]] != "bull":
+                result[i] = False
+        except Exception:
+            pass
+    return result
+
+
+def _build_sma_filter(closes: np.ndarray, period: int = 50) -> np.ndarray:
+    """Build boolean array: True where close >= SMA(period)."""
+    sma = pd.Series(closes).rolling(period).mean().values
+    return closes >= sma
+
+
+def run_backtest(symbol: str, df: pd.DataFrame, therm_vals: np.ndarray = None,
+                 *, regime: pd.Series = None, optimized: bool = False):
     """
     Run both strategies on a single stock.
 
@@ -269,6 +358,13 @@ def run_backtest(symbol: str, df: pd.DataFrame, therm_vals: np.ndarray = None) -
     df : OHLC DataFrame
     therm_vals : optional pre-computed thermometer values (e.g. from TV CSV).
                  If None, computed from df using our formula.
+    regime : optional SPX bull/bear regime Series (for optimized mode)
+    optimized : if True, also run optimized versions and return 5 results
+
+    Returns
+    -------
+    If optimized=False: (r1, r2)
+    If optimized=True: (r1, r2, r1_opt, r2a_opt, r2b_opt)
     """
     if therm_vals is None:
         therm_vals = compute_thermometer(df).values
@@ -287,13 +383,36 @@ def run_backtest(symbol: str, df: pd.DataFrame, therm_vals: np.ndarray = None) -
     closes = closes[start:]
     therm_vals = therm_vals[start:]
 
+    # Original strategies
     trades1 = backtest_strategy1(dates, closes, therm_vals)
     trades2 = backtest_strategy2(dates, closes, therm_vals)
 
     r1 = StrategyResult(symbol=symbol, strategy="超买动量 (76→68)", trades=trades1)
     r2 = StrategyResult(symbol=symbol, strategy="超卖反转 (28→51)", trades=trades2)
 
-    return r1, r2
+    if not optimized:
+        return r1, r2
+
+    # Optimized strategies
+    atr_pct = _compute_atr_pct(df, closes, start)
+    regime_filter = _build_regime_filter(dates, regime)
+    sma_filter = _build_sma_filter(closes, 50)
+
+    # S1 optimized: stop loss + ATR% filter
+    trades1_opt = backtest_strategy1(dates, closes, therm_vals,
+                                     stop_loss_pct=20, atr_pct=atr_pct, min_atr_pct=2.0)
+    # S2-A optimized: stop loss + SPX regime filter
+    trades2a_opt = backtest_strategy2(dates, closes, therm_vals,
+                                      stop_loss_pct=20, trend_filter=regime_filter)
+    # S2-B optimized: stop loss + stock SMA(50) filter
+    trades2b_opt = backtest_strategy2(dates, closes, therm_vals,
+                                      stop_loss_pct=20, trend_filter=sma_filter)
+
+    r1_opt = StrategyResult(symbol=symbol, strategy="超买动量优化 (止损20%+ATR≥2%)", trades=trades1_opt)
+    r2a_opt = StrategyResult(symbol=symbol, strategy="超卖反转优化A (止损20%+SPX趋势)", trades=trades2a_opt)
+    r2b_opt = StrategyResult(symbol=symbol, strategy="超卖反转优化B (止损20%+个股SMA50)", trades=trades2b_opt)
+
+    return r1, r2, r1_opt, r2a_opt, r2b_opt
 
 
 # ---------------------------------------------------------------------------
