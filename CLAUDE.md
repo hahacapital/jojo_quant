@@ -79,10 +79,17 @@ python3 generate_report.py --no-push --no-s3
 | thermometer | 温度计当前值 |
 | atr_pct | ATR%（仅策略1） |
 | bt_trades | 历史回测交易次数（2009年至今） |
-| bt_win_rate | 历史胜率 |
+| bt_win_rate | 历史胜率% |
 | bt_total_pnl | 历史累计收益% |
 | bt_pf | 盈亏比 (Profit Factor) |
 | bt_max_dd | 最大回撤% |
+| {regime}_trades | 当前市场环境下的交易次数 |
+| {regime}_win% | 当前市场环境下的胜率 |
+| {regime}_pnl% | 当前市场环境下的累计收益 |
+| {regime}_pf | 当前市场环境下的盈亏比 |
+| {regime}_dd% | 当前市场环境下的最大回撤 |
+
+> **市场环境判断**: SPX 收盘价 >= SMA(225) 为牛市，< SMA(225) 为熊市。输出中 {regime} 会根据当前 SPX 状态自动替换为"牛市"或"熊市"，只展示当前环境对应的数据。
 
 ## 过滤规则
 

@@ -29,12 +29,27 @@ python generate_report.py
 | 文件 | 说明 |
 |------|------|
 | `indicators.py` | 温度计指标核心计算（纯 pandas / numpy，无需外部 TA 库） |
-| `screener.py` | 全市场扫描工具，检测两种策略的买入信号，附带历史回测数据 |
-| `backtest.py` | 历史回测引擎，支持优化版策略（止损+过滤） |
-| `generate_report.py` | 批量回测报告生成（推送 GitHub + S3） |
+| `screener.py` | 全市场扫描（股票+加密+期货），附带整体+当前市场环境回测数据 |
+| `backtest.py` | 历史回测引擎，支持优化版策略（止损+趋势过滤+波动率过滤） |
+| `generate_report.py` | 批量回测报告生成（牛熊市分别统计，推送 GitHub + S3） |
 | `thermometer.pine` | TradingView Pine Script v6 版本，与 Python 代码完全一致 |
 | `CLAUDE.md` | OpenClaw skill 配置文件 |
 | `requirements.txt` | Python 依赖 |
+
+## 扫描输出字段
+
+每个信号包含：基本信息（ticker, 英文名, 中文名, 行业, 市值, 收盘价, 温度计值）+ 整体历史回测（交易次数, 胜率, 累计收益, 盈亏比, 最大回撤）+ **当前市场环境回测**（根据 SPX vs SMA225 自动判断牛/熊市，只展示对应环境的历史数据）。
+
+## 过滤规则
+
+- 股票：市值 ≥ 1B USD，排除 ETF
+- 加密货币和商品期货：不做市值过滤
+
+## 覆盖范围
+
+- **股票**: NASDAQ + NYSE 全部（约 6000+）
+- **加密货币**: BTC, ETH, SOL, XRP, BNB, ADA, DOGE 等 30+ 主流币种
+- **商品期货**: 黄金(GC=F), 白银(SI=F), 原油(CL=F), 天然气(NG=F), 铜(HG=F), 铂金(PL=F)
 
 ## 温度计指标详解
 
