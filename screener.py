@@ -1,8 +1,8 @@
 """
-jojo_quant (韭韭量化) — scan stocks, crypto, and commodities for 温度计 signals.
+jojo_quant (韭韭量化) — scan stocks, crypto, and commodities for jojo signals.
 
-Strategy 1 (超买动量): thermometer crosses UP through 76 today (ATR% >= 2.0)
-Strategy 2 (超卖反转): thermometer was below 28 and turns upward today
+Strategy 1 (超买动量): jojo crosses UP through 76 today (ATR% >= 2.0)
+Strategy 2 (超卖反转): jojo was below 28 and turns upward today
 
 Usage:
     python screener.py                        # scan both strategies
@@ -20,7 +20,7 @@ import requests
 import yfinance as yf
 
 from backtest import run_backtest
-from indicators import compute_thermometer
+from indicators import compute_jojo
 
 
 # ---------------------------------------------------------------------------
@@ -464,7 +464,7 @@ def scan_signals(all_data: dict[str, pd.DataFrame], strategy: str = "all") -> tu
             print(f"\r  Scanning... {idx + 1}/{total}", end="", flush=True)
 
         try:
-            therm = compute_thermometer(df)
+            therm = compute_jojo(df)
             vals = therm.values
             if len(vals) < 3:
                 continue
@@ -515,7 +515,7 @@ def scan_signals(all_data: dict[str, pd.DataFrame], strategy: str = "all") -> tu
                         "ticker": sym,
                         "date": last_date,
                         "close": round(last_close, 2),
-                        "thermometer": round(today, 2),
+                        "jojo": round(today, 2),
                         "prev": round(yesterday, 2),
                         "atr_pct": round(cur_atr_pct, 2),
                     })
@@ -545,7 +545,7 @@ def scan_signals(all_data: dict[str, pd.DataFrame], strategy: str = "all") -> tu
                         "ticker": sym,
                         "date": last_date,
                         "close": round(last_close, 2),
-                        "thermometer": round(today, 2),
+                        "jojo": round(today, 2),
                         "prev": round(yesterday, 2),
                         "recent_low": round(recent_low2, 2),
                     })
@@ -555,16 +555,16 @@ def scan_signals(all_data: dict[str, pd.DataFrame], strategy: str = "all") -> tu
 
     print(f"\r  Scanned {total} tickers ({errors} errors).                    ")
 
-    cols1 = ["ticker", "date", "close", "thermometer", "prev", "atr_pct"]
-    cols2 = ["ticker", "date", "close", "thermometer", "prev", "recent_low"]
+    cols1 = ["ticker", "date", "close", "jojo", "prev", "atr_pct"]
+    cols2 = ["ticker", "date", "close", "jojo", "prev", "recent_low"]
 
     df1 = pd.DataFrame(s1_results, columns=cols1)
     df2 = pd.DataFrame(s2_results, columns=cols2)
 
     if not df1.empty:
-        df1 = df1.sort_values("thermometer", ascending=False).reset_index(drop=True)
+        df1 = df1.sort_values("jojo", ascending=False).reset_index(drop=True)
     if not df2.empty:
-        df2 = df2.sort_values("thermometer", ascending=True).reset_index(drop=True)
+        df2 = df2.sort_values("jojo", ascending=True).reset_index(drop=True)
 
     return df1, df2
 
@@ -574,7 +574,7 @@ def scan_signals(all_data: dict[str, pd.DataFrame], strategy: str = "all") -> tu
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="韭韭量化 温度计选股")
+    parser = argparse.ArgumentParser(description="韭韭量化 jojo选股")
     parser.add_argument("--strategy", type=str, default="all", choices=["1", "2", "all"],
                         help="Which strategy to scan: 1, 2, or all (default: all)")
     parser.add_argument("--top", type=int, default=0,
@@ -586,7 +586,7 @@ def main():
     args = parser.parse_args()
 
     strat_desc = {"1": "Strategy 1 only", "2": "Strategy 2 only", "all": "All strategies"}
-    print("=== 韭韭量化 温度计选股 ===")
+    print("=== 韭韭量化 jojo选股 ===")
     print(f"Mode: {strat_desc[args.strategy]}")
     print()
 
@@ -647,10 +647,10 @@ def main():
     }
 
     display_cols1 = ["ticker", "name", "cn_name", "industry", "mkt_cap_fmt",
-                     "close", "thermometer", "atr_pct",
+                     "close", "jojo", "atr_pct",
                      "bt_trades", "bt_win_rate", "bt_total_pnl", "bt_pf", "bt_max_dd"] + regime_bt_cols
     display_cols2 = ["ticker", "name", "cn_name", "industry", "mkt_cap_fmt",
-                     "close", "thermometer", "recent_low",
+                     "close", "jojo", "recent_low",
                      "bt_trades", "bt_win_rate", "bt_total_pnl", "bt_pf", "bt_max_dd"] + regime_bt_cols
 
     def _display_df(df, display_cols):

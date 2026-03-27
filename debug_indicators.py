@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from indicators import _rsi, _willr, _cmo, _stoch, _tsi, _dmi_adx, _ema, _rma
 
-def debug_thermometer(df: pd.DataFrame, length: int = 14):
+def debug_jojo(df: pd.DataFrame, length: int = 14):
     close = df["close"].astype(float)
     high = df["high"].astype(float)
     low = df["low"].astype(float)
@@ -59,19 +59,19 @@ print("\nFirst 5 rows of all columns:")
 print(df.head().to_string())
 
 # Check if the TV CSV has individual indicator values in the Plot columns
-# The header shows: time,open,high,low,close,温度计,Plot,Shapes,Shapes,Plot,Plot,Plot,Plot,Plot,Plot,ADX
+# The header shows: time,open,high,low,close,jojo,Plot,Shapes,Shapes,Plot,Plot,Plot,Plot,Plot,Plot,ADX
 # Let's rename and examine
 print("\n\nColumn values at row 50:")
 for i, col in enumerate(df.columns):
     print(f"  col[{i}] '{col}': {df.iloc[50, i]}")
 
 # Now compute our indicators
-debug = debug_thermometer(df)
+debug = debug_jojo(df)
 print("\n\nOur sub-indicators at row 50:")
 for col in debug.columns:
     print(f"  {col}: {debug[col].iloc[50]:.4f}")
 
-print(f"\n  TV 温度计: {df['温度计'].iloc[50]:.4f}")
+print(f"\n  TV jojo: {df['jojo'].iloc[50]:.4f}")
 print(f"  Our index: {debug['index'].iloc[50]:.4f}")
 
 # Check if there's an ADX column in TV data to compare

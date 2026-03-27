@@ -1,7 +1,7 @@
 //@version=6
-indicator("温度计_v6", overlay=false)
+indicator("jojo_v6", overlay=false)
 
-len = input.int(14, "温度计回溯期数")
+len = input.int(14, "回溯期数")
 
 // ---- Sub-indicators ----
 value_rsi = ta.rsi(close, len)
@@ -18,7 +18,7 @@ index_raw = value_rsi * 0.1 + value_wr * 0.2 + value_cmo * 0.1 + value_kd * 0.3 
 index = ta.ema(index_raw, 3)
 
 // ---- Plot ----
-plot(index, "温度计", color=color.blue, linewidth=2)
+plot(index, "jojo", color=color.blue, linewidth=2)
 hline(76, "超买", color=color.red,   linestyle=hline.style_dashed)
 hline(68, "卖出", color=color.orange, linestyle=hline.style_dashed)
 hline(51, "中线", color=color.gray,  linestyle=hline.style_dotted)

@@ -1,13 +1,13 @@
 """
-Backtest — test historical performance of 温度计 strategies.
+Backtest — test historical performance of jojo strategies.
 
 Strategy 1 (超买动量):
-    BUY  when thermometer crosses above 76
-    SELL when thermometer drops below 68
+    BUY  when jojo crosses above 76
+    SELL when jojo drops below 68
 
 Strategy 2 (超卖反转):
-    BUY  when thermometer was below 28 and turns upward (today > yesterday)
-    SELL when thermometer crosses above 51, OR drops below 28 again
+    BUY  when jojo was below 28 and turns upward (today > yesterday)
+    SELL when jojo crosses above 51, OR drops below 28 again
 
 Usage:
     # Backtest single stock
@@ -19,7 +19,7 @@ Usage:
     # Backtest with custom history period
     python backtest.py TSLA --years 3
 
-    # Backtest from a TradingView CSV (uses 温度计 column directly)
+    # Backtest from a TradingView CSV
     python backtest.py --csv "/tmp/BATS_TSLA, 1D_35f99.csv" --label TSLA
 """
 
@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-from indicators import compute_thermometer
+from indicators import compute_jojo
 
 
 # ---------------------------------------------------------------------------
@@ -127,8 +127,8 @@ def backtest_strategy1(dates, closes, therm_vals, *,
                        stop_loss_pct=None, atr_pct=None, min_atr_pct=None) -> list[Trade]:
     """
     Strategy 1 (超买动量):
-        BUY:  thermometer crosses above 76 (today > 76 AND yesterday <= 76)
-        SELL: thermometer drops below 68 (today < 68 AND yesterday >= 68)
+        BUY:  jojo crosses above 76 (today > 76 AND yesterday <= 76)
+        SELL: jojo drops below 68 (today < 68 AND yesterday >= 68)
 
     Optional optimizations:
         stop_loss_pct: fixed stop loss percentage (e.g. 20 means -20%)
@@ -213,8 +213,8 @@ def backtest_strategy2(dates, closes, therm_vals, *,
                        stop_loss_pct=None, trend_filter=None) -> list[Trade]:
     """
     Strategy 2 (超卖反转):
-        BUY:  thermometer was below 28, then turns up (today > yesterday, yesterday < 28)
-        SELL: thermometer crosses above 51 OR drops below 28 again
+        BUY:  jojo was below 28, then turns up (today > yesterday, yesterday < 28)
+        SELL: jojo crosses above 51 OR drops below 28 again
 
     Optional optimizations:
         stop_loss_pct: fixed stop loss percentage (e.g. 20 means -20%)
@@ -356,7 +356,7 @@ def run_backtest(symbol: str, df: pd.DataFrame, therm_vals: np.ndarray = None,
     ----------
     symbol : ticker symbol (for display)
     df : OHLC DataFrame
-    therm_vals : optional pre-computed thermometer values (e.g. from TV CSV).
+    therm_vals : optional pre-computed jojo values (e.g. from TV CSV).
                  If None, computed from df using our formula.
     regime : optional SPX bull/bear regime Series (for optimized mode)
     optimized : if True, also run optimized versions and return 5 results
@@ -367,7 +367,7 @@ def run_backtest(symbol: str, df: pd.DataFrame, therm_vals: np.ndarray = None,
     If optimized=True: (r1, r2, r1_opt, r2a_opt, r2b_opt)
     """
     if therm_vals is None:
-        therm_vals = compute_thermometer(df).values
+        therm_vals = compute_jojo(df).values
 
     closes = df["close"].astype(float).values
     dates = df.index if hasattr(df.index, 'strftime') else range(len(df))
@@ -456,16 +456,16 @@ def print_result(r: StrategyResult):
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="温度计 backtest")
+    parser = argparse.ArgumentParser(description="jojo backtest")
     parser.add_argument("symbols", nargs="*", help="Ticker symbols to backtest")
     parser.add_argument("--csv", type=str, default=None,
-                        help="Path to TradingView CSV (uses 温度计 column directly)")
+                        help="Path to TradingView CSV (uses jojo column directly)")
     parser.add_argument("--label", type=str, default=None,
                         help="Symbol label for CSV mode (default: filename)")
     parser.add_argument("--years", type=int, default=2,
                         help="Years of history for yfinance download (default: 2)")
     parser.add_argument("--use-tv", action="store_true",
-                        help="When using --csv, use the 温度计 column instead of computing our own")
+                        help="When using --csv, use the jojo column instead of computing our own")
     args = parser.parse_args()
 
     if not args.symbols and not args.csv:
@@ -490,11 +490,11 @@ def main():
         df.columns = cols
 
         therm_vals = None
-        if args.use_tv and "温度计" in df.columns:
-            therm_vals = df["温度计"].values
-            print(f"  Using TV 温度计 column ({np.sum(~np.isnan(therm_vals))} values)")
+        if args.use_tv and "jojo" in df.columns:
+            therm_vals = df["jojo"].values
+            print(f"  Using TV jojo column ({np.sum(~np.isnan(therm_vals))} values)")
         else:
-            print("  Computing thermometer from OHLC...")
+            print("  Computing jojo from OHLC...")
 
         r1, r2 = run_backtest(label, df, therm_vals)
         print_result(r1)

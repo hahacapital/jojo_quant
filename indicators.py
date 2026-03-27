@@ -1,5 +1,5 @@
 """
-温度计 (Thermometer) indicator — pure pandas/numpy implementation matching TradingView Pine Script.
+jojo 复合动量指标 — pure pandas/numpy implementation matching TradingView Pine Script.
 
 No external TA library required. All indicators implemented from scratch using
 Wilder's smoothing (RMA) and EMA to match TradingView's calculations.
@@ -155,9 +155,9 @@ def _dmi_adx(high: pd.Series, low: pd.Series, close: pd.Series,
     return adx
 
 
-def compute_thermometer(df: pd.DataFrame, length: int = 14) -> pd.Series:
+def compute_jojo(df: pd.DataFrame, length: int = 14) -> pd.Series:
     """
-    Compute the 温度计 (thermometer) indicator.
+    Compute the jojo composite momentum indicator.
 
     Parameters
     ----------
@@ -166,7 +166,7 @@ def compute_thermometer(df: pd.DataFrame, length: int = 14) -> pd.Series:
 
     Returns
     -------
-    pd.Series : thermometer index values [0, 100]
+    pd.Series : jojo index values [0, 100]
     """
     close = df["close"].astype(float)
     high = df["high"].astype(float)

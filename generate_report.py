@@ -1,5 +1,5 @@
 """
-Generate comprehensive backtest report for thermometer strategies.
+Generate comprehensive backtest report for jojo strategies.
 
 Downloads data, runs backtests, tags bull/bear regime, computes enhanced
 metrics, generates markdown report, commits to GitHub, uploads to S3.
@@ -307,7 +307,7 @@ def generate_report(all_results, regime, run_date):
     all_results: list of (sym, r1, r2, r1_opt, r2a_opt, r2b_opt) tuples
     """
     md = []
-    md.append(f"# 温度计 (Thermometer) 回测报告\n")
+    md.append(f"# 韭韭量化 回测报告\n")
     md.append(f"**生成日期**: {run_date}")
     md.append(f"**回测区间**: {START_DATE} 至今")
     md.append(f"**股票数量**: {len(all_results)}")
@@ -380,7 +380,7 @@ def generate_stock_detail(sym, r1, r2, r1_opt, r2a_opt, r2b_opt, regime, run_dat
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate thermometer backtest report")
+    parser = argparse.ArgumentParser(description="Generate jojo backtest report")
     parser.add_argument("--no-push", action="store_true", help="Skip git push")
     parser.add_argument("--no-s3", action="store_true", help="Skip S3 upload")
     args = parser.parse_args()

@@ -1,5 +1,5 @@
 """
-Validate thermometer indicator against TradingView exported CSV data.
+Validate jojo indicator against TradingView exported CSV data.
 
 Strategy: Download full stock history from yfinance (to match TradingView's
 warm-up), compute our indicator, then compare against the TV-exported values.
@@ -11,7 +11,7 @@ Usage:
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from indicators import compute_thermometer
+from indicators import compute_jojo
 
 TV_FILES = {
     "HOOD": "/tmp/BATS_HOOD, 1D_f4797.csv",
@@ -29,7 +29,7 @@ def load_tv_csv(path: str) -> pd.DataFrame:
 
 
 def validate_symbol(symbol: str, tv_path: str):
-    """Validate thermometer calculation for one symbol."""
+    """Validate jojo calculation for one symbol."""
     print(f"\n{'='*60}")
     print(f"Validating: {symbol}")
     print(f"{'='*60}")
@@ -37,7 +37,7 @@ def validate_symbol(symbol: str, tv_path: str):
     # Load TV data
     tv_df = load_tv_csv(tv_path)
     tv_dates = tv_df["date"].values
-    tv_values = tv_df["温度计"].values
+    tv_values = tv_df["jojo"].values
 
     # Download full history from yfinance
     yf_data = yf.download(symbol, start="2000-01-01", end="2026-03-26", progress=False)
@@ -53,10 +53,10 @@ def validate_symbol(symbol: str, tv_path: str):
 
     print(f"  yfinance data: {len(yf_data)} rows, {yf_data.index[0].date()} to {yf_data.index[-1].date()}")
 
-    # Compute thermometer on full history
+    # Compute jojo on full history
     yf_data = yf_data.reset_index()
     yf_data["date_key"] = yf_data["date" if "date" in yf_data.columns else "Date"].dt.date
-    computed = compute_thermometer(yf_data)
+    computed = compute_jojo(yf_data)
 
     # Build lookup: date -> computed value
     computed_map = {}

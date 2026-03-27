@@ -1,6 +1,6 @@
-# jojo_quant (韭韭量化) - 温度计选股工具
+# jojo_quant (韭韭量化) - jojo指标选股工具
 
-基于温度计 (Thermometer) 复合动量指标的全市场扫描工具。扫描范围覆盖 NASDAQ + NYSE 全部股票、主要加密货币和商品期货。
+基于 jojo 复合动量指标的全市场扫描工具。扫描范围覆盖 NASDAQ + NYSE 全部股票、主要加密货币和商品期货。
 
 ## 可用命令
 
@@ -52,15 +52,15 @@ python3 generate_report.py --no-push --no-s3
 ## 策略说明
 
 ### 策略1: 超买动量
-- **买入**: 温度计上穿 76
-- **卖出**: 温度计下穿 68
+- **买入**: jojo指标上穿 76
+- **卖出**: jojo指标下穿 68
 - **过滤**: ATR%(14) >= 2.0（过滤低波动股）
 - **止损**: -20%
 - **适合**: 高波动股票（TSLA, NVDA, RKLB 等）
 
 ### 策略2: 超卖反转
-- **买入**: 温度计在 28 以下拐头向上
-- **卖出**: 温度计上穿 51，或再次下穿 28
+- **买入**: jojo指标在 28 以下拐头向上
+- **卖出**: jojo指标上穿 51，或再次下穿 28
 - **止损**: -20%
 - **适合**: 超卖反弹机会
 
@@ -76,7 +76,7 @@ python3 generate_report.py --no-push --no-s3
 | industry | 行业分类 |
 | mkt_cap_fmt | 市值（格式化） |
 | close | 最新收盘价 |
-| thermometer | 温度计当前值 |
+| jojo | jojo指标当前值 |
 | atr_pct | ATR%（仅策略1） |
 | bt_trades | 历史回测交易次数（2009年至今） |
 | bt_win_rate | 历史胜率% |
@@ -108,9 +108,9 @@ python3 generate_report.py --no-push --no-s3
 |------|------|
 | `screener.py` | 全市场扫描工具 |
 | `backtest.py` | 历史回测引擎 |
-| `indicators.py` | 温度计指标计算（纯 pandas/numpy） |
+| `indicators.py` | jojo指标指标计算（纯 pandas/numpy） |
 | `generate_report.py` | 批量回测报告生成 |
-| `thermometer.pine` | TradingView Pine Script 版本 |
+| `jojo.pine` | TradingView Pine Script 版本 |
 
 ## 依赖
 
