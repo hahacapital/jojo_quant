@@ -317,10 +317,41 @@ def enrich_signals(df: pd.DataFrame, name_map: dict[str, str]) -> pd.DataFrame:
     return df
 
 
-def _run_backtest_for_signal(sym: str, strategy: int) -> dict:
+def _compute_trade_metrics(trades: list) -> dict:
+    """Compute backtest metrics from a list of Trade objects."""
+    if not trades:
+        return {"trades": 0, "win_rate": 0, "total_pnl": 0, "pf": 0, "max_dd": 0}
+
+    pnls = [t.pnl_pct for t in trades]
+    wins = sum(1 for p in pnls if p > 0)
+    gross_profit = sum(p for p in pnls if p > 0)
+    gross_loss = abs(sum(p for p in pnls if p < 0))
+    pf = gross_profit / gross_loss if gross_loss > 0 else (float("inf") if gross_profit > 0 else 0)
+
+    equity = 100.0
+    peak = equity
+    max_dd = 0.0
+    for p in pnls:
+        equity *= (1 + p / 100)
+        if equity > peak:
+            peak = equity
+        dd = (peak - equity) / peak * 100
+        if dd > max_dd:
+            max_dd = dd
+
+    return {
+        "trades": len(trades),
+        "win_rate": round(wins / len(trades) * 100, 1),
+        "total_pnl": round(sum(pnls), 1),
+        "pf": round(pf, 2) if pf != float("inf") else "inf",
+        "max_dd": round(max_dd, 1),
+    }
+
+
+def _run_backtest_for_signal(sym: str, strategy: int, regime: pd.Series = None) -> dict:
     """Download full history and run backtest for a single ticker.
 
-    Returns dict with backtest metrics for the specified strategy.
+    Returns dict with overall + regime-specific backtest metrics.
     """
     try:
         df = yf.download(sym, start="2009-01-01", auto_adjust=True, progress=False)
@@ -333,35 +364,66 @@ def _run_backtest_for_signal(sym: str, strategy: int) -> dict:
         r1, r2 = run_backtest(sym, df)
         r = r1 if strategy == 1 else r2
 
-        if not r.trades:
-            return {"bt_trades": 0, "bt_win_rate": 0, "bt_total_pnl": 0, "bt_pf": 0, "bt_max_dd": 0}
-
-        pnls = [t.pnl_pct for t in r.trades]
-        equity = 100.0
-        peak = equity
-        max_dd = 0.0
-        for p in pnls:
-            equity *= (1 + p / 100)
-            if equity > peak:
-                peak = equity
-            dd = (peak - equity) / peak * 100
-            if dd > max_dd:
-                max_dd = dd
-
-        pf = r.profit_factor
-        return {
-            "bt_trades": r.num_trades,
-            "bt_win_rate": round(r.win_rate, 1),
-            "bt_total_pnl": round(r.total_pnl, 1),
-            "bt_pf": round(pf, 2) if pf != float("inf") else "inf",
-            "bt_max_dd": round(max_dd, 1),
+        # Overall metrics
+        m_all = _compute_trade_metrics(r.trades)
+        result = {
+            "bt_trades": m_all["trades"],
+            "bt_win_rate": m_all["win_rate"],
+            "bt_total_pnl": m_all["total_pnl"],
+            "bt_pf": m_all["pf"],
+            "bt_max_dd": m_all["max_dd"],
         }
+
+        # Bull/bear split
+        if regime is not None and r.trades:
+            bull_trades, bear_trades = [], []
+            for t in r.trades:
+                entry_str = str(t.entry_date)[:10]
+                try:
+                    entry_dt = pd.Timestamp(entry_str)
+                    idx = regime.index.get_indexer([entry_dt], method="ffill")
+                    reg = regime.iloc[idx[0]] if idx[0] >= 0 else "unknown"
+                except Exception:
+                    reg = "unknown"
+                if reg == "bull":
+                    bull_trades.append(t)
+                elif reg == "bear":
+                    bear_trades.append(t)
+
+            m_bull = _compute_trade_metrics(bull_trades)
+            m_bear = _compute_trade_metrics(bear_trades)
+            for prefix, m in [("bull_", m_bull), ("bear_", m_bear)]:
+                result[f"{prefix}trades"] = m["trades"]
+                result[f"{prefix}win_rate"] = m["win_rate"]
+                result[f"{prefix}total_pnl"] = m["total_pnl"]
+                result[f"{prefix}pf"] = m["pf"]
+                result[f"{prefix}max_dd"] = m["max_dd"]
+
+        return result
     except Exception:
         return {}
 
 
-def add_backtest_data(df: pd.DataFrame, strategy: int) -> pd.DataFrame:
-    """Add historical backtest columns for each ticker in the signal DataFrame."""
+def get_current_regime() -> tuple[str, pd.Series]:
+    """Download SPX, compute SMA(225), return (current_regime, full_regime_series)."""
+    try:
+        spx = yf.download("^GSPC", start="2008-01-01", auto_adjust=True, progress=False)
+        if isinstance(spx.columns, pd.MultiIndex):
+            spx = spx.droplevel("Ticker", axis=1)
+        spx.columns = [c.lower() for c in spx.columns]
+        close = spx["close"].astype(float)
+        sma = close.rolling(225).mean()
+        regime = pd.Series("bear", index=close.index)
+        regime[close >= sma] = "bull"
+        regime = regime.ffill()
+        current = regime.iloc[-1]
+        return current, regime
+    except Exception:
+        return "unknown", pd.Series(dtype=str)
+
+
+def add_backtest_data(df: pd.DataFrame, strategy: int, regime: pd.Series = None) -> pd.DataFrame:
+    """Add historical backtest columns (overall + bull/bear) for each ticker."""
     if df.empty:
         return df
 
@@ -371,10 +433,13 @@ def add_backtest_data(df: pd.DataFrame, strategy: int) -> pd.DataFrame:
 
     bt_data = {}
     for sym in tickers:
-        bt_data[sym] = _run_backtest_for_signal(sym, strategy)
+        bt_data[sym] = _run_backtest_for_signal(sym, strategy, regime)
 
-    for col in ["bt_trades", "bt_win_rate", "bt_total_pnl", "bt_pf", "bt_max_dd"]:
-        df[col] = df["ticker"].apply(lambda s: bt_data.get(s, {}).get(col, ""))
+    all_cols = ["bt_trades", "bt_win_rate", "bt_total_pnl", "bt_pf", "bt_max_dd",
+                "bull_trades", "bull_win_rate", "bull_total_pnl", "bull_pf", "bull_max_dd",
+                "bear_trades", "bear_win_rate", "bear_total_pnl", "bear_pf", "bear_max_dd"]
+    for col in all_cols:
+        df[col] = df["ticker"].apply(lambda s, c=col: bt_data.get(s, {}).get(c, ""))
 
     print(" done.")
     return df
@@ -525,22 +590,28 @@ def main():
     print(f"Mode: {strat_desc[args.strategy]}")
     print()
 
-    print("[1/5] Fetching NASDAQ + NYSE ticker list...")
+    print("[1/6] Fetching NASDAQ + NYSE ticker list...")
     tickers, name_map = get_exchange_tickers()
     # Add extra tickers (crypto + commodities)
     all_tickers = tickers + [t for t in EXTRA_TICKERS if t not in tickers]
     print(f"  Found {len(tickers)} stocks + {len(EXTRA_TICKERS)} extras = {len(all_tickers)} total.")
     print()
 
-    print("[2/5] Downloading OHLC data...")
+    print("[2/6] Detecting market regime (SPX SMA 225)...")
+    current_regime, regime_series = get_current_regime()
+    regime_cn = {"bull": "牛市", "bear": "熊市", "unknown": "未知"}
+    print(f"  当前市场环境: {regime_cn.get(current_regime, current_regime)}")
+    print()
+
+    print("[3/6] Downloading OHLC data...")
     all_data = download_ohlc(all_tickers, days=args.days, batch_size=args.batch)
     print()
 
-    print("[3/5] Scanning for signals...")
+    print("[4/6] Scanning for signals...")
     s1, s2 = scan_signals(all_data, strategy=args.strategy)
 
     # Enrich with company info + market cap filter
-    print("\n[4/5] Fetching company info & filtering (market cap >= 1B)...")
+    print("\n[5/6] Fetching company info & filtering (market cap >= 1B)...")
     s1 = enrich_signals(s1, name_map)
     s2 = enrich_signals(s2, name_map)
 
@@ -548,43 +619,66 @@ def main():
         s1 = s1.head(args.top)
         s2 = s2.head(args.top)
 
-    # Add backtest data
-    print("\n[5/5] Running historical backtests...")
+    # Add backtest data (with bull/bear split)
+    print("\n[6/6] Running historical backtests...")
     if not s1.empty:
-        s1 = add_backtest_data(s1, strategy=1)
+        s1 = add_backtest_data(s1, strategy=1, regime=regime_series)
     if not s2.empty:
-        s2 = add_backtest_data(s2, strategy=2)
+        s2 = add_backtest_data(s2, strategy=2, regime=regime_series)
+
+    # Choose regime-specific columns based on current market
+    if current_regime == "bull":
+        regime_prefix = "bull_"
+        regime_label = "牛市"
+    else:
+        regime_prefix = "bear_"
+        regime_label = "熊市"
+
+    regime_bt_cols = [f"{regime_prefix}trades", f"{regime_prefix}win_rate",
+                      f"{regime_prefix}total_pnl", f"{regime_prefix}pf", f"{regime_prefix}max_dd"]
+
+    # Rename regime columns for display
+    regime_display_names = {
+        f"{regime_prefix}trades": f"{regime_label}_trades",
+        f"{regime_prefix}win_rate": f"{regime_label}_win%",
+        f"{regime_prefix}total_pnl": f"{regime_label}_pnl%",
+        f"{regime_prefix}pf": f"{regime_label}_pf",
+        f"{regime_prefix}max_dd": f"{regime_label}_dd%",
+    }
 
     display_cols1 = ["ticker", "name", "cn_name", "industry", "mkt_cap_fmt",
                      "close", "thermometer", "atr_pct",
-                     "bt_trades", "bt_win_rate", "bt_total_pnl", "bt_pf", "bt_max_dd"]
+                     "bt_trades", "bt_win_rate", "bt_total_pnl", "bt_pf", "bt_max_dd"] + regime_bt_cols
     display_cols2 = ["ticker", "name", "cn_name", "industry", "mkt_cap_fmt",
                      "close", "thermometer", "recent_low",
-                     "bt_trades", "bt_win_rate", "bt_total_pnl", "bt_pf", "bt_max_dd"]
+                     "bt_trades", "bt_win_rate", "bt_total_pnl", "bt_pf", "bt_max_dd"] + regime_bt_cols
+
+    def _display_df(df, display_cols):
+        cols = [c for c in display_cols if c in df.columns]
+        out = df[cols].rename(columns=regime_display_names)
+        print(out.to_string(index=False))
 
     if args.strategy in ("1", "all"):
         print()
-        print("=" * 120)
-        print("Strategy 1 — 超买动量 (cross above 76 | stop 20% | ATR%≥2.0)")
-        print("=" * 120)
+        print("=" * 140)
+        print(f"Strategy 1 — 超买动量 (cross above 76 | stop 20% | ATR%≥2.0) | 当前: {regime_label}")
+        print("=" * 140)
         if s1.empty:
             print("  No signals today.")
         else:
             print(f"  Found {len(s1)} signal(s), sorted by market cap:\n")
-            cols = [c for c in display_cols1 if c in s1.columns]
-            print(s1[cols].to_string(index=False))
+            _display_df(s1, display_cols1)
 
     if args.strategy in ("2", "all"):
         print()
-        print("=" * 120)
-        print("Strategy 2 — 超卖反转 (below 28, turning up | stop 20%)")
-        print("=" * 120)
+        print("=" * 140)
+        print(f"Strategy 2 — 超卖反转 (below 28, turning up | stop 20%) | 当前: {regime_label}")
+        print("=" * 140)
         if s2.empty:
             print("  No signals today.")
         else:
             print(f"  Found {len(s2)} signal(s), sorted by market cap:\n")
-            cols = [c for c in display_cols2 if c in s2.columns]
-            print(s2[cols].to_string(index=False))
+            _display_df(s2, display_cols2)
 
     print()
     print("Done.")
