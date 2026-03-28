@@ -692,7 +692,7 @@ def run_fund(data: dict[str, pd.DataFrame],
                 else:
                     cur_pf = static_pf
                 ranked = sorted(candidates, key=lambda x: cur_pf.get(x[0], 0), reverse=True)
-            elif rank_method in ("mktcap", "mktcap_asc"):
+            elif rank_method in ("mktcap", "mktcap_asc", "mktcap_mid"):
                 # Rank by approx market cap at current date (close × shares outstanding)
                 _sh = shares_map or {}
                 def _approx_mktcap(sym):
@@ -700,8 +700,14 @@ def run_fund(data: dict[str, pd.DataFrame],
                     if s <= 0 or sym not in data or date not in data[sym].index:
                         return 0
                     return float(data[sym].loc[date, "close"]) * s
-                desc = (rank_method == "mktcap")
-                ranked = sorted(candidates, key=lambda x: _approx_mktcap(x[0]), reverse=desc)
+                if rank_method == "mktcap_mid":
+                    # Sort by cap, then reorder so median-ranked come first
+                    by_cap = sorted(candidates, key=lambda x: _approx_mktcap(x[0]))
+                    mid = len(by_cap) // 2
+                    ranked = sorted(by_cap, key=lambda x: abs(by_cap.index(x) - mid))
+                else:
+                    desc = (rank_method == "mktcap")
+                    ranked = sorted(candidates, key=lambda x: _approx_mktcap(x[0]), reverse=desc)
             elif rank_method in ("jojo", "jojo_asc"):
                 # jojo: highest first (strongest momentum); jojo_asc: lowest first (just crossed)
                 desc = (rank_method == "jojo")
