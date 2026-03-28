@@ -218,6 +218,32 @@ def precompute_atr_pct(data: dict[str, pd.DataFrame]) -> dict[str, pd.Series]:
     return cache
 
 
+def fetch_shares_outstanding(tickers: list[str]) -> dict[str, float]:
+    """Fetch current shares outstanding for each ticker via yfinance.
+
+    Used together with historical close prices to approximate historical
+    market cap (close × shares).  Share counts change slowly, so this is
+    a reasonable approximation that avoids look-ahead bias on price.
+    """
+    shares = {}
+    batch_size = 200
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i + batch_size]
+        try:
+            ts = yf.Tickers(" ".join(batch))
+            for sym in batch:
+                try:
+                    info = ts.tickers[sym].fast_info
+                    s = getattr(info, "shares", 0) or 0
+                    if s > 0:
+                        shares[sym] = float(s)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return shares
+
+
 def compute_historical_pf(data: dict[str, pd.DataFrame],
                           jojo_cache: dict[str, pd.Series],
                           strategy: int) -> dict[str, float]:
@@ -379,7 +405,9 @@ def run_fund(data: dict[str, pd.DataFrame],
              vol_sizing: bool = False,
              pf_map_override: dict = None,
              rolling_pf_cache: dict = None,
-             trading_dates: set = None) -> tuple[list, list]:
+             trading_dates: set = None,
+             rank_method: str = "pf",
+             shares_map: dict = None) -> tuple[list, list]:
     """
     Run portfolio simulation.
 
@@ -538,15 +566,29 @@ def run_fund(data: dict[str, pd.DataFrame],
                         atr_val = float(av)
                 candidates.append((sym, float(j_today), strat, atr_val))
 
-        # --- 5. Rank by rolling PF and allocate ---
+        # --- 5. Rank candidates and allocate ---
         if candidates and len(positions) < eff_max:
-            # Get current PF map
-            if rolling_pf is not None:
-                cur_pf = get_rolling_pf(rolling_pf, date)
+            if rank_method == "pf":
+                # Rank by rolling / static profit factor
+                if rolling_pf is not None:
+                    cur_pf = get_rolling_pf(rolling_pf, date)
+                else:
+                    cur_pf = static_pf
+                ranked = sorted(candidates, key=lambda x: cur_pf.get(x[0], 0), reverse=True)
+            elif rank_method == "mktcap":
+                # Rank by approx market cap at current date (close × shares outstanding)
+                _sh = shares_map or {}
+                def _approx_mktcap(sym):
+                    s = _sh.get(sym, 0)
+                    if s <= 0 or sym not in data or date not in data[sym].index:
+                        return 0
+                    return float(data[sym].loc[date, "close"]) * s
+                ranked = sorted(candidates, key=lambda x: _approx_mktcap(x[0]), reverse=True)
+            elif rank_method == "jojo":
+                # Rank by jojo value (highest first — strongest momentum)
+                ranked = sorted(candidates, key=lambda x: x[1], reverse=True)
             else:
-                cur_pf = static_pf
-
-            ranked = sorted(candidates, key=lambda x: cur_pf.get(x[0], 0), reverse=True)
+                ranked = candidates
             available_slots = eff_max - len(positions)
 
             # Current equity for sizing
@@ -894,6 +936,11 @@ def main():
                         help="Force re-download (skip cache)")
     parser.add_argument("--output-dir", type=str, default="reports/",
                         help="Output directory (default: reports/)")
+    parser.add_argument("--rank-method", type=str, default="pf",
+                        choices=["pf", "mktcap", "jojo"],
+                        help="Ranking method: pf (default), mktcap, jojo")
+    parser.add_argument("--rank-compare", action="store_true",
+                        help="Compare all rank methods × TopN combinations")
     args = parser.parse_args()
 
     strat_names = {1: "策略1(超买动量)", 2: "策略2(超卖反转)", 3: "策略1+2(全部)"}
@@ -946,7 +993,64 @@ def main():
         trading_dates=td,
     )
 
-    if args.compare:
+    if args.rank_compare:
+        print(f"\n[4/5] Running rank method × TopN comparison...")
+
+        # Pre-build rolling PF cache once
+        all_dates = sorted(set().union(*(df.index for df in data.values())))
+        if td:
+            all_dates = [d for d in all_dates if d in td]
+        if args.start:
+            start_ts = pd.Timestamp(args.start)
+            all_dates = [d for d in all_dates if d >= start_ts]
+        shared_rolling_pf = None
+        shared_static_pf = None
+        if args.pf_window > 0:
+            shared_rolling_pf = build_rolling_pf_cache(
+                data, jojo_cache, args.strategy, all_dates, args.pf_window)
+        else:
+            shared_static_pf = compute_historical_pf(data, jojo_cache, args.strategy)
+
+        # Fetch shares outstanding for mktcap ranking
+        print("  Fetching shares outstanding...")
+        shares_map = fetch_shares_outstanding(list(data.keys()))
+        print(f"  Got shares for {len(shares_map)} tickers.")
+
+        top_ns = [3, 5, 8, 10]
+        rank_methods = [
+            ("滚动PF", "pf"),
+            ("市值", "mktcap"),
+            ("jojo指标", "jojo"),
+        ]
+
+        comparison = []
+        for top_n in top_ns:
+            for rank_label, rank_m in rank_methods:
+                label = f"Top{top_n} | {rank_label}"
+                print(f"  Running: {label}...")
+                run_kwargs = dict(
+                    data=data, jojo_cache=jojo_cache, atr_cache=atr_cache,
+                    strategy=args.strategy, max_positions=top_n,
+                    stop_loss_pct=args.stop_loss, initial_capital=args.capital,
+                    start_date=args.start, end_date=args.end,
+                    pf_window=0, trading_dates=td,
+                    rank_method=rank_m, shares_map=shares_map,
+                )
+                if rank_m == "pf":
+                    if shared_rolling_pf is not None:
+                        run_kwargs["rolling_pf_cache"] = shared_rolling_pf
+                    elif shared_static_pf is not None:
+                        run_kwargs["pf_map_override"] = shared_static_pf
+
+                snapshots, trades = run_fund(**run_kwargs)
+                m = compute_fund_metrics(snapshots, trades, args.capital)
+                comparison.append((label, metrics_one_line(m)))
+
+        print_comparison(comparison)
+        print("\nDone.")
+        sys.exit(0)
+
+    elif args.compare:
         print(f"\n[4/5] Running 4 configurations...")
 
         # Pre-build rolling PF cache once (shared across all configs)
@@ -1007,11 +1111,18 @@ def main():
                       + (" | ATR%动态仓位" if args.vol_sizing else ""))
 
         print(f"\n[4/5] Running fund simulation...")
+        extra_kwargs = {}
+        if args.rank_method != "pf":
+            extra_kwargs["rank_method"] = args.rank_method
+            if args.rank_method == "mktcap":
+                print("  Fetching shares outstanding...")
+                extra_kwargs["shares_map"] = fetch_shares_outstanding(list(data.keys()))
         snapshots, trades = run_fund(
             **common_kwargs,
             regime=regime if args.regime_filter else None,
             regime_filter=args.regime_filter,
             vol_sizing=args.vol_sizing,
+            **extra_kwargs,
         )
 
         if not snapshots:

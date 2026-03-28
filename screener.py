@@ -629,25 +629,13 @@ def main():
                      "close", "jojo", "recent_low",
                      "bt_trades", "bt_win_rate", "bt_total_pnl", "bt_pf", "bt_max_dd"] + regime_bt_cols
 
-    def _rank_and_display(df, display_cols, top_n=5):
-        """Rank by PF: top N marked as fund picks first, rest by market cap."""
+    def _rank_and_display(df, display_cols):
+        """Rank all results by market cap descending."""
         if df.empty:
             return
         cols = [c for c in display_cols if c in df.columns]
-        # Sort by bt_pf descending, pick top N as fund selections
-        pf_col = "bt_pf" if "bt_pf" in df.columns else None
-        if pf_col and len(df) > top_n:
-            top = df.nlargest(top_n, pf_col).copy()
-            rest = df.drop(top.index).sort_values("market_cap", ascending=False)
-            top["pick"] = "★"
-            rest["pick"] = ""
-            combined = pd.concat([top, rest], ignore_index=True)
-        else:
-            combined = df.sort_values("market_cap", ascending=False).copy()
-            combined["pick"] = "★" if len(combined) <= top_n else ""
-        out_cols = ["pick"] + cols
-        out_cols = [c for c in out_cols if c in combined.columns]
-        out = combined[out_cols].rename(columns=regime_display_names)
+        combined = df.sort_values("market_cap", ascending=False).copy()
+        out = combined[cols].rename(columns=regime_display_names)
         print(out.to_string(index=False))
 
     if args.strategy in ("1", "all"):
@@ -658,7 +646,7 @@ def main():
         if s1.empty:
             print("  No signals today.")
         else:
-            print(f"  Found {len(s1)} signal(s) | ★ = PF ranking top 5 (基金当日选择):\n")
+            print(f"  Found {len(s1)} signal(s)，按市值排名:\n")
             _rank_and_display(s1, display_cols1)
 
     if args.strategy in ("2", "all"):
@@ -669,7 +657,7 @@ def main():
         if s2.empty:
             print("  No signals today.")
         else:
-            print(f"  Found {len(s2)} signal(s) | ★ = PF ranking top 5 (基金当日选择):\n")
+            print(f"  Found {len(s2)} signal(s)，按市值排名:\n")
             _rank_and_display(s2, display_cols2)
 
     print()

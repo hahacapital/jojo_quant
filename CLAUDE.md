@@ -49,28 +49,6 @@ python3 generate_report.py
 python3 generate_report.py --no-push --no-s3
 ```
 
-### 基金回测（Top5 组合）
-
-```bash
-# 对比4种配置（基线/熊市减仓/ATR%动态仓位/全部叠加）
-python3 fund_backtest.py --compare --universe sp500+
-
-# 单独运行
-python3 fund_backtest.py --strategy 1 --universe sp500+
-python3 fund_backtest.py --strategy 1 --universe sp500+ --regime-filter --vol-sizing
-```
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--strategy` | `1` | `1`=超买动量, `2`=超卖反转, `3`=全部 |
-| `--universe` | `sp500` | `sp500`, `sp500+`(含期货), `report`, `custom` |
-| `--max-positions` | `5` | 最大同时持仓数 |
-| `--stop-loss` | `20` | 止损百分比 |
-| `--pf-window` | `756` | 滚动PF窗口（交易日，~3年） |
-| `--regime-filter` | off | 熊市时减仓（最多2仓） |
-| `--vol-sizing` | off | ATR%反比仓位管理 |
-| `--compare` | off | 同时运行4种配置并对比 |
-
 ## 策略说明
 
 ### 策略1: 超买动量
@@ -131,7 +109,7 @@ python3 fund_backtest.py --strategy 1 --universe sp500+ --regime-filter --vol-si
 | `backtest.py` | 历史回测引擎 |
 | `indicators.py` | jojo指标指标计算（纯 pandas/numpy） |
 | `generate_report.py` | 批量回测报告生成 |
-| `fund_backtest.py` | 基金组合回测（Top5持仓，滚动PF排名） |
+| `fund_backtest.py` | 基金组合回测（内部工具，不对外开放） |
 | `jojo.pine` | TradingView Pine Script 版本 |
 
 ## 依赖
