@@ -1,6 +1,6 @@
 # jojo_quant (韭韭量化) - jojo指标选股工具
 
-基于 jojo 复合动量指标的全市场扫描工具。扫描范围覆盖 NASDAQ + NYSE 全部股票、主要加密货币和商品期货。
+基于 jojo 复合动量指标的全市场扫描工具。扫描范围覆盖 NASDAQ + NYSE 全部股票和商品期货。
 
 ## 可用命令
 
@@ -94,12 +94,11 @@ python3 generate_report.py --no-push --no-s3
 ## 过滤规则
 
 - 股票：市值 >= 1B USD，排除 ETF
-- 加密货币和商品期货：不做市值过滤
+- 商品期货：不做市值过滤
 
 ## 覆盖范围
 
 - **股票**: NASDAQ + NYSE 全部（约 6000+）
-- **加密货币**: BTC, ETH, SOL, XRP, BNB, ADA, DOGE 等 30+ 主流币种
 - **商品期货**: 黄金(GC=F), 白银(SI=F), 原油(CL=F), 天然气(NG=F), 铜(HG=F), 铂金(PL=F)
 
 ## 项目文件
@@ -110,6 +109,7 @@ python3 generate_report.py --no-push --no-s3
 | `backtest.py` | 历史回测引擎 |
 | `indicators.py` | jojo指标指标计算（纯 pandas/numpy） |
 | `generate_report.py` | 批量回测报告生成 |
+| `fund_backtest.py` | 基金组合回测（内部工具，不对外开放） |
 | `jojo.pine` | TradingView Pine Script 版本 |
 
 ## 依赖

@@ -1,5 +1,5 @@
 """
-jojo_quant (韭韭量化) — scan stocks, crypto, and commodities for jojo signals.
+jojo_quant (韭韭量化) — scan stocks and commodities for jojo signals.
 
 Strategy 1 (超买动量): jojo crosses UP through 76 today (ATR% >= 2.0)
 Strategy 2 (超卖反转): jojo was below 28 and turns upward today
@@ -24,20 +24,12 @@ from indicators import compute_jojo
 
 
 # ---------------------------------------------------------------------------
-# Extra tickers (crypto + commodities, not in NASDAQ/NYSE lists)
+# Extra tickers (commodities, not in NASDAQ/NYSE lists)
 # ---------------------------------------------------------------------------
 
 EXTRA_TICKERS = [
     # Commodities futures
     "GC=F", "SI=F", "CL=F", "NG=F", "HG=F", "PL=F",
-    # Crypto (Yahoo Finance format, market cap > 1B as of 2026-03)
-    "BTC-USD", "ETH-USD", "USDT-USD", "BNB-USD", "XRP-USD",
-    "USDC-USD", "SOL-USD", "TRX-USD", "DOGE-USD", "HYPE32196-USD",
-    "ADA-USD", "BCH-USD", "LEO-USD", "LINK-USD", "XMR-USD",
-    "XLM-USD", "DAI-USD", "LTC-USD", "AVAX-USD", "HBAR-USD",
-    "ZEC-USD", "TAO22974-USD", "SUI20947-USD", "SHIB-USD", "TON11419-USD",
-    "CRO-USD", "UNI7083-USD", "DOT-USD", "OKB-USD", "MNT27075-USD",
-    "PAXG-USD",
 ]
 
 EXTRA_TICKERS_SET = set(EXTRA_TICKERS)
@@ -72,19 +64,6 @@ CN_NAMES = {
     # Commodities
     "GC=F": "黄金期货", "SI=F": "白银期货", "CL=F": "原油期货",
     "NG=F": "天然气期货", "HG=F": "铜期货", "PL=F": "铂金期货",
-    # Crypto
-    "BTC-USD": "比特币", "ETH-USD": "以太坊", "USDT-USD": "泰达币",
-    "BNB-USD": "币安币", "XRP-USD": "瑞波币", "USDC-USD": "USD Coin",
-    "SOL-USD": "Solana", "TRX-USD": "波场", "DOGE-USD": "狗狗币",
-    "HYPE32196-USD": "Hyperliquid", "ADA-USD": "卡尔达诺",
-    "BCH-USD": "比特币现金", "LEO-USD": "LEO", "LINK-USD": "Chainlink",
-    "XMR-USD": "门罗币", "XLM-USD": "恒星币", "DAI-USD": "DAI",
-    "LTC-USD": "莱特币", "AVAX-USD": "Avalanche", "HBAR-USD": "Hedera",
-    "ZEC-USD": "Zcash", "TAO22974-USD": "Bittensor",
-    "SUI20947-USD": "Sui", "SHIB-USD": "柴犬币",
-    "TON11419-USD": "Toncoin", "CRO-USD": "Cronos",
-    "UNI7083-USD": "Uniswap", "DOT-USD": "波卡",
-    "OKB-USD": "OKB", "MNT27075-USD": "Mantle", "PAXG-USD": "PAX Gold",
 }
 
 
@@ -275,14 +254,11 @@ def enrich_signals(df: pd.DataFrame, name_map: dict[str, str]) -> pd.DataFrame:
     df["industry"] = df["ticker"].apply(lambda s: profiles.get(s, {}).get("industry", ""))
     df["market_cap"] = df["ticker"].apply(lambda s: profiles.get(s, {}).get("marketCap", 0))
 
-    # For extras, set sector/industry from type
+    # For extras (commodities), set sector/industry
     for idx, row in df.iterrows():
         sym = row["ticker"]
         if sym in EXTRA_TICKERS_SET:
-            if sym.endswith("-USD"):
-                df.at[idx, "sector"] = "Crypto"
-                df.at[idx, "industry"] = "Cryptocurrency"
-            elif sym.endswith("=F"):
+            if sym.endswith("=F"):
                 df.at[idx, "sector"] = "Commodities"
                 df.at[idx, "industry"] = "Futures"
 
@@ -592,7 +568,7 @@ def main():
 
     print("[1/6] Fetching NASDAQ + NYSE ticker list...")
     tickers, name_map = get_exchange_tickers()
-    # Add extra tickers (crypto + commodities)
+    # Add extra tickers (commodities)
     all_tickers = tickers + [t for t in EXTRA_TICKERS if t not in tickers]
     print(f"  Found {len(tickers)} stocks + {len(EXTRA_TICKERS)} extras = {len(all_tickers)} total.")
     print()
@@ -653,9 +629,13 @@ def main():
                      "close", "jojo", "recent_low",
                      "bt_trades", "bt_win_rate", "bt_total_pnl", "bt_pf", "bt_max_dd"] + regime_bt_cols
 
-    def _display_df(df, display_cols):
+    def _rank_and_display(df, display_cols):
+        """Rank all results by market cap descending."""
+        if df.empty:
+            return
         cols = [c for c in display_cols if c in df.columns]
-        out = df[cols].rename(columns=regime_display_names)
+        combined = df.sort_values("market_cap", ascending=False).copy()
+        out = combined[cols].rename(columns=regime_display_names)
         print(out.to_string(index=False))
 
     if args.strategy in ("1", "all"):
@@ -666,8 +646,8 @@ def main():
         if s1.empty:
             print("  No signals today.")
         else:
-            print(f"  Found {len(s1)} signal(s), sorted by market cap:\n")
-            _display_df(s1, display_cols1)
+            print(f"  Found {len(s1)} signal(s)，按市值排名:\n")
+            _rank_and_display(s1, display_cols1)
 
     if args.strategy in ("2", "all"):
         print()
@@ -677,8 +657,8 @@ def main():
         if s2.empty:
             print("  No signals today.")
         else:
-            print(f"  Found {len(s2)} signal(s), sorted by market cap:\n")
-            _display_df(s2, display_cols2)
+            print(f"  Found {len(s2)} signal(s)，按市值排名:\n")
+            _rank_and_display(s2, display_cols2)
 
     print()
     print("Done.")
