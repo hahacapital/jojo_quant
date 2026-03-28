@@ -7,6 +7,9 @@ Simulates a fund that:
 3. Manages positions with stop loss, optional regime filter, optional vol sizing
 4. Tracks portfolio equity curve and computes fund-level metrics
 
+TODO: Add periodic rebalancing — check holdings on a weekly/monthly basis,
+      replace positions whose PF ranking has dropped with higher-ranked candidates.
+
 Usage:
     python fund_backtest.py --strategy 1 --universe sp500+
     python fund_backtest.py --strategy 1 --universe sp500+ --regime-filter --vol-sizing

@@ -1,6 +1,6 @@
 # jojo_quant (韭韭量化) - jojo指标选股工具
 
-基于 jojo 复合动量指标的全市场扫描工具。扫描范围覆盖 NASDAQ + NYSE 全部股票、主要加密货币和商品期货。
+基于 jojo 复合动量指标的全市场扫描工具。扫描范围覆盖 NASDAQ + NYSE 全部股票和商品期货。
 
 ## 可用命令
 
@@ -49,6 +49,28 @@ python3 generate_report.py
 python3 generate_report.py --no-push --no-s3
 ```
 
+### 基金回测（Top5 组合）
+
+```bash
+# 对比4种配置（基线/熊市减仓/ATR%动态仓位/全部叠加）
+python3 fund_backtest.py --compare --universe sp500+
+
+# 单独运行
+python3 fund_backtest.py --strategy 1 --universe sp500+
+python3 fund_backtest.py --strategy 1 --universe sp500+ --regime-filter --vol-sizing
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--strategy` | `1` | `1`=超买动量, `2`=超卖反转, `3`=全部 |
+| `--universe` | `sp500` | `sp500`, `sp500+`(含期货), `report`, `custom` |
+| `--max-positions` | `5` | 最大同时持仓数 |
+| `--stop-loss` | `20` | 止损百分比 |
+| `--pf-window` | `756` | 滚动PF窗口（交易日，~3年） |
+| `--regime-filter` | off | 熊市时减仓（最多2仓） |
+| `--vol-sizing` | off | ATR%反比仓位管理 |
+| `--compare` | off | 同时运行4种配置并对比 |
+
 ## 策略说明
 
 ### 策略1: 超买动量
@@ -94,12 +116,11 @@ python3 generate_report.py --no-push --no-s3
 ## 过滤规则
 
 - 股票：市值 >= 1B USD，排除 ETF
-- 加密货币和商品期货：不做市值过滤
+- 商品期货：不做市值过滤
 
 ## 覆盖范围
 
 - **股票**: NASDAQ + NYSE 全部（约 6000+）
-- **加密货币**: BTC, ETH, SOL, XRP, BNB, ADA, DOGE 等 30+ 主流币种
 - **商品期货**: 黄金(GC=F), 白银(SI=F), 原油(CL=F), 天然气(NG=F), 铜(HG=F), 铂金(PL=F)
 
 ## 项目文件
@@ -110,6 +131,7 @@ python3 generate_report.py --no-push --no-s3
 | `backtest.py` | 历史回测引擎 |
 | `indicators.py` | jojo指标指标计算（纯 pandas/numpy） |
 | `generate_report.py` | 批量回测报告生成 |
+| `fund_backtest.py` | 基金组合回测（Top5持仓，滚动PF排名） |
 | `jojo.pine` | TradingView Pine Script 版本 |
 
 ## 依赖

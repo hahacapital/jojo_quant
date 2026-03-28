@@ -325,7 +325,7 @@ def generate_report(all_results, regime, run_date):
 
     md.append("### 个股交易明细\n")
     for item in all_results:
-        md.append(f"- [{item[0]}]({item[0]}.md)")
+        md.append(f"- [{item[0]}](stocks/{item[0]}.md)")
     md.append("")
 
     # --- Strategy 2 ---
@@ -339,7 +339,7 @@ def generate_report(all_results, regime, run_date):
 
     md.append("### 个股交易明细\n")
     for item in all_results:
-        md.append(f"- [{item[0]}]({item[0]}.md)")
+        md.append(f"- [{item[0]}](stocks/{item[0]}.md)")
     md.append("")
 
     return "\n".join(md)
@@ -363,7 +363,7 @@ def generate_stock_detail(sym, r1, r2, r1_opt, r2a_opt, r2b_opt, regime, run_dat
     md = []
     md.append(f"# {sym} 交易明细\n")
     md.append(f"**生成日期**: {run_date}")
-    md.append(f"[← 返回汇总报告](backtest_report.md)\n")
+    md.append(f"[← 返回汇总报告](../backtest_report.md)\n")
 
     md.append("## 策略1: 超买动量 (上穿76买入 → 下穿68卖出 | 止损20% | ATR%≥2.0)\n")
     _detail_section(md, "交易明细", r1_opt, regime)
@@ -422,7 +422,7 @@ def main():
     # Per-stock detail files
     for sym, r1, r2, r1_opt, r2a_opt, r2b_opt in all_results:
         detail = generate_stock_detail(sym, r1, r2, r1_opt, r2a_opt, r2b_opt, regime, run_date)
-        detail_path = f"reports/{sym}.md"
+        detail_path = f"reports/stocks/{sym}.md"
         with open(detail_path, "w") as f:
             f.write(detail)
         print(f"  {detail_path} ({len(detail)} chars)")
