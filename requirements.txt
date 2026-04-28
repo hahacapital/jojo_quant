@@ -4,3 +4,4 @@ numpy
 requests
 scipy
 pyarrow
+lxml

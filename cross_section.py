@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import math
 import subprocess
@@ -23,6 +24,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import requests
 import yfinance as yf
 
 import data_loader as dl
@@ -189,12 +191,25 @@ WIKI_SP500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 WIKI_RUSSELL1000 = "https://en.wikipedia.org/wiki/Russell_1000_Index"
 
 
+WIKI_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+)
+
+
 def _scrape_index_members() -> set[str]:
-    """Scrape Russell 1000 + S&P 500 ticker symbols from Wikipedia."""
+    """Scrape Russell 1000 + S&P 500 ticker symbols from Wikipedia.
+
+    Uses requests with a real User-Agent (Wikipedia returns 403 to default
+    urllib agent), then hands the HTML to pd.read_html for table parsing.
+    """
     members: set[str] = set()
+    headers = {"User-Agent": WIKI_UA}
     for label, url in (("S&P 500", WIKI_SP500), ("Russell 1000", WIKI_RUSSELL1000)):
         try:
-            tables = pd.read_html(url)
+            resp = requests.get(url, headers=headers, timeout=20)
+            resp.raise_for_status()
+            tables = pd.read_html(io.StringIO(resp.text))
         except Exception as e:
             print(f"  [WARN] {label} scrape failed: {e}")
             continue
@@ -477,8 +492,83 @@ def main() -> None:
     parser.add_argument("--no-push", action="store_true")
     args = parser.parse_args()
 
-    print("cross_section.py — placeholder; functions added in subsequent tasks")
-    print(f"  args = {vars(args)}")
+    strategies = (["S1", "S2"] if args.strategy == "all"
+                  else [f"S{args.strategy}"])
+
+    print("[1/6] Building universe...")
+    universe = build_universe()
+    if args.limit > 0:
+        universe = universe[: args.limit]
+        print(f"  --limit {args.limit} → using {len(universe)} tickers")
+
+    print("\n[2/6] Loading SPX + building regimes...")
+    spx = load_or_fetch_spx()
+    regimes = build_regimes(spx)
+    print(f"  SPX bars: {len(spx)}  |  regime labels: "
+          f"{regimes['regime'].nunique()} distinct")
+
+    print(f"\n[3/6] Running backtests for {len(universe)} tickers...")
+    records: list[dict] = []
+    skipped = 0
+    for i, ticker in enumerate(universe, start=1):
+        if i % 100 == 0:
+            print(f"  {i}/{len(universe)}  records so far: {len(records)}")
+        try:
+            df = dl.load_ohlc(ticker)
+        except Exception as e:
+            print(f"  [WARN] load {ticker}: {e}")
+            skipped += 1
+            continue
+        try:
+            r1, r2 = run_backtest(ticker, df)
+        except Exception as e:
+            print(f"  [WARN] backtest {ticker}: {e}")
+            skipped += 1
+            continue
+        if "S1" in strategies:
+            records.extend(classify_trades(ticker, "S1", r1.trades, regimes))
+        if "S2" in strategies:
+            records.extend(classify_trades(ticker, "S2", r2.trades, regimes))
+    print(f"  Done. Records: {len(records)}, skipped: {skipped}")
+
+    # Drop warmup-tagged trades from the analysis universe
+    records = [r for r in records if r["regime"] != "warmup"]
+    print(f"  Records after dropping warmup: {len(records)}")
+
+    print("\n[4/6] Aggregating per (ticker, strategy, regime)...")
+    agg = aggregate(records)
+    print(f"  Groups: {len(agg)}")
+
+    print("\n[5/6] Ranking...")
+    main_rank, perfect = rank(agg, min_trades=args.min_trades)
+    print(f"  Main-rank rows: {len(main_rank)}  |  perfect-record rows: {len(perfect)}")
+
+    print("\n[6/6] Writing report...")
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    today = datetime.utcnow().date().isoformat()
+    md_path = REPORTS_DIR / f"cross_section_{today}.md"
+    csv_path = REPORTS_DIR / f"cross_section_{today}.csv"
+
+    n_stocks = sum(1 for t in universe if t not in EXTRA_TICKERS)
+    n_commod = sum(1 for t in universe if t in EXTRA_TICKERS)
+    period = (str(spx.index[0].date()), str(spx.index[-1].date()))
+
+    md = render_markdown(main_rank, perfect, regimes, top_n=args.top,
+                         universe_size=(n_stocks, n_commod),
+                         period=period, strategies=strategies)
+    md_path.write_text(md)
+    write_csv(agg, csv_path)
+    print(f"  Wrote {md_path}\n  Wrote {csv_path}")
+
+    if args.no_push:
+        print("\nSkipped git push (--no-push).")
+    else:
+        print("\nPushing to GitHub...")
+        try:
+            git_push_reports([md_path, csv_path])
+            print("  Push done.")
+        except subprocess.CalledProcessError as e:
+            print(f"  [WARN] push failed: {e}")
 
 
 if __name__ == "__main__":
