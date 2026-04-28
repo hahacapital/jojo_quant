@@ -124,6 +124,30 @@ def build_trend_state(spx: pd.DataFrame) -> pd.Series:
     return state
 
 
+def build_vol_bucket(spx: pd.DataFrame) -> pd.Series:
+    """Return per-date vol_bucket in {'low_vol', 'mid_vol', 'high_vol'}.
+
+    Step 1: 30-day realized log-return vol (annualised).
+    Step 2: 5-year rolling percentile rank of that vol series.
+    Step 3: bucket by VOL_LOW_Q / VOL_HIGH_Q thresholds.
+
+    Uses only past data; 'warmup' for any row before rolling rank
+    has min_periods.
+    """
+    close = spx["close"].astype(float)
+    log_ret = np.log(close).diff()
+    vol = log_ret.rolling(VOL_WINDOW).std() * math.sqrt(252)
+
+    rank = vol.rolling(VOL_RANK_WINDOW, min_periods=252).rank(pct=True)
+
+    bucket = pd.Series("warmup", index=close.index, dtype=object)
+    valid = rank.notna()
+    bucket[valid & (rank <= VOL_LOW_Q)] = "low_vol"
+    bucket[valid & (rank > VOL_LOW_Q) & (rank <= VOL_HIGH_Q)] = "mid_vol"
+    bucket[valid & (rank > VOL_HIGH_Q)] = "high_vol"
+    return bucket
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="jojo cross-section backtest")
     parser.add_argument("--strategy", type=str, default="all",

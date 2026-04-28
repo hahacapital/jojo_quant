@@ -402,6 +402,34 @@ def test_trend_state_no_lookahead():
 
 
 # ============================================================
+# Test 11: vol_bucket has no look-ahead
+# ============================================================
+def test_vol_bucket_no_lookahead():
+    """vol_bucket[t] from full series == from truncated series at the same t."""
+    import cross_section as cs
+    np.random.seed(1)
+    n = 1800
+    dates = pd.bdate_range("2015-01-01", periods=n)
+    rets = np.random.randn(n) * 0.01
+    close = 3000 * np.exp(np.cumsum(rets))
+    spx_full = pd.DataFrame({
+        "open": close, "high": close, "low": close, "close": close,
+    }, index=dates)
+
+    cutoff_idx = 1500
+    cutoff = dates[cutoff_idx]
+    spx_trunc = spx_full.iloc[: cutoff_idx + 1]
+
+    vb_full = cs.build_vol_bucket(spx_full)
+    vb_trunc = cs.build_vol_bucket(spx_trunc)
+    assert vb_full.loc[cutoff] == vb_trunc.loc[cutoff], (
+        f"vol_bucket[{cutoff.date()}] differs: full={vb_full.loc[cutoff]} "
+        f"vs trunc={vb_trunc.loc[cutoff]}"
+    )
+    print("  PASS: vol_bucket has no look-ahead")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -421,6 +449,7 @@ if __name__ == "__main__":
         ("Screener stop loss", test_screener_stop_loss_state),
         ("SPX cache roundtrip", test_spx_cache_roundtrip),
         ("trend_state no look-ahead", test_trend_state_no_lookahead),
+        ("vol_bucket no look-ahead", test_vol_bucket_no_lookahead),
     ]
 
     passed = 0
