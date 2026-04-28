@@ -55,6 +55,19 @@ python3 generate_report.py --no-push --no-s3
 
 > `generate_report.py` 默认推送到 GitHub 和 S3（见下方"外部依赖"）。无凭证或调试时务必加 `--no-push --no-s3`。
 
+### 横截面回测
+
+```bash
+# 全策略，按当前股票池 (Russell1000 ∪ SP500 ∩ ≥10y) 跑
+python3 cross_section.py
+
+# 单策略 + 不推送
+python3 cross_section.py --strategy 1 --no-push
+
+# 烟雾测试
+python3 cross_section.py --limit 5 --no-push
+```
+
 ### 测试与调试
 
 ```bash
@@ -130,7 +143,8 @@ python3 compare_ranking.py
 - **`indicators.py`** — 纯 pandas/numpy，无 I/O。导出 `compute_jojo(df)`，内部由 6 个子指标合成（`_rsi` / `_willr` / `_cmo` / `_stoch` / `_tsi` / `_dmi_adx`，配合 `_rma` / `_ema` 平滑）。被其他所有模块复用。
 - **`backtest.py`** — 暴露 `backtest_strategy1()` / `backtest_strategy2()`（numpy 向量化模拟）以及编排函数 `run_backtest()`（下载 → 指标 → 策略 → 按市场环境拆分指标）。被 `screener.py` 与 `generate_report.py` 调用。
 - **`screener.py`** — 每日扫描入口：`yfinance` 批量下载 OHLC → `compute_jojo` → 当日信号筛选 → 用 `run_backtest()` 给每行附加历史回测指标（整段 + 当前 SPX 环境子集） → 排名输出。
-- **市场环境**: 由 `^GSPC` 收盘价对比 SMA(225) 决定，用于挑选输出中显示哪一组 `{regime}_*` 列。
+- **`cross_section.py`** — 横截面回测：`build_universe()` 取 cache ∩ Wikipedia 大盘成分；`build_regimes()` 在 SPX 上计算 trend (SMA50/200/225) × 5y rolling vol-rank → 9 桶；每股跑 `run_backtest`，按 entry-date regime 聚合后用 `score = pf × √trades` 排名。仅推 GitHub。
+- **市场环境**: 由 `^GSPC` 收盘价对比 SMA(225) 决定（screener/generate_report）。`cross_section.py` 用更细的 9 桶（3 trend × 3 vol）。
 
 ## 项目文件
 
@@ -140,6 +154,7 @@ python3 compare_ranking.py
 | `backtest.py` | 历史回测引擎（`run_backtest`、`backtest_strategy1/2`） |
 | `indicators.py` | jojo 指标计算（纯 pandas/numpy，无 I/O） |
 | `generate_report.py` | 批量回测报告生成（默认推 GitHub + S3） |
+| `cross_section.py` | 横截面回测：按 9 个 SPX 趋势 × 波动率 regime 排名每股 S1/S2 表现 |
 | `fund_backtest.py` | 基金组合回测（内部工具，支持 `--universe sp500/sp500+/report/custom`、`--historical` 反生存者偏差、`--compare` 多配置对比；输出 `fund_equity.csv` / `fund_trades.csv`） |
 | `compare_ranking.py` | 比较 4 种基金选股排名方法 |
 | `test_logic.py` | 回测逻辑断言测试（项目唯一测试入口） |
