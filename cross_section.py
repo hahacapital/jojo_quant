@@ -449,6 +449,23 @@ def render_markdown(main_rank: pd.DataFrame, perfect: pd.DataFrame,
     return "\n".join(parts) + "\n"
 
 
+def write_csv(agg: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cols = ["ticker", "strategy", "regime", "trades", "win_rate",
+            "total_pnl", "avg_pnl", "pf", "max_dd", "avg_holding", "score"]
+    agg.to_csv(path, index=False, columns=cols)
+
+
+def git_push_reports(paths: list[Path]) -> None:
+    for p in paths:
+        subprocess.run(["git", "add", str(p)], check=True, cwd=REPO_ROOT)
+    subprocess.run(
+        ["git", "commit", "-m", f"cross_section report {datetime.utcnow().date()}"],
+        check=True, cwd=REPO_ROOT,
+    )
+    subprocess.run(["git", "push"], check=True, cwd=REPO_ROOT)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="jojo cross-section backtest")
     parser.add_argument("--strategy", type=str, default="all",
