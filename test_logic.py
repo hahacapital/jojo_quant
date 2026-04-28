@@ -341,6 +341,40 @@ def test_screener_stop_loss_state():
 
 
 # ============================================================
+# Test 9: SPX cache round-trip
+# ============================================================
+def test_spx_cache_roundtrip(tmp_dir=None):
+    """Saving SPX to parquet and re-reading must preserve OHLC."""
+    import tempfile
+    from pathlib import Path
+    import pandas as pd
+    import cross_section as cs
+
+    with tempfile.TemporaryDirectory() as td:
+        # Force the cache path into a temp dir
+        original = cs.SPX_CACHE_PATH
+        cs.SPX_CACHE_PATH = Path(td) / "spx.parquet"
+        try:
+            # Build a fake SPX frame
+            dates = pd.bdate_range("2020-01-01", periods=300)
+            df = pd.DataFrame({
+                "open": np.linspace(3000, 3500, 300),
+                "high": np.linspace(3010, 3510, 300),
+                "low":  np.linspace(2990, 3490, 300),
+                "close": np.linspace(3005, 3505, 300),
+            }, index=dates)
+            cs._save_spx(df)
+            loaded = cs._load_cached_spx()
+            assert loaded is not None, "cached SPX should load"
+            assert len(loaded) == 300
+            assert (loaded["close"] == df["close"]).all()
+        finally:
+            cs.SPX_CACHE_PATH = original
+
+    print("  PASS: SPX cache roundtrip preserves OHLC")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -358,6 +392,7 @@ if __name__ == "__main__":
         ("Fund next-day exec", test_fund_next_day_execution),
         ("E2E backtest", test_run_backtest_e2e),
         ("Screener stop loss", test_screener_stop_loss_state),
+        ("SPX cache roundtrip", test_spx_cache_roundtrip),
     ]
 
     passed = 0

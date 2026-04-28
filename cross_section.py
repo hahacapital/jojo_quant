@@ -54,6 +54,44 @@ VOL_LOW_Q = 0.33
 VOL_HIGH_Q = 0.67
 
 
+# ---------------------------------------------------------------------------
+# SPX cache
+# ---------------------------------------------------------------------------
+
+def _save_spx(df: pd.DataFrame) -> None:
+    SPX_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    out = df[["open", "high", "low", "close"]].copy()
+    out.index = pd.DatetimeIndex(out.index, name="date")
+    out.to_parquet(SPX_CACHE_PATH, compression="snappy")
+
+
+def _load_cached_spx() -> pd.DataFrame | None:
+    if not SPX_CACHE_PATH.exists():
+        return None
+    df = pd.read_parquet(SPX_CACHE_PATH)
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.DatetimeIndex(df.index)
+    return df
+
+
+def load_or_fetch_spx(max_staleness_days: int = 7) -> pd.DataFrame:
+    """Return SPX OHLC from cache if fresh, else fetch and update cache."""
+    cached = _load_cached_spx()
+    if cached is not None and not cached.empty:
+        last = cached.index[-1]
+        if (pd.Timestamp.utcnow().tz_localize(None) - last).days <= max_staleness_days:
+            return cached
+
+    print(f"Fetching SPX ({SPX_SYMBOL}) from {SPX_START}...")
+    raw = yf.download(SPX_SYMBOL, start=SPX_START, auto_adjust=True, progress=False)
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw = raw.droplevel("Ticker", axis=1)
+    raw.columns = [c.lower() for c in raw.columns]
+    df = raw[["open", "high", "low", "close"]].dropna(how="all").copy()
+    _save_spx(df)
+    return df
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="jojo cross-section backtest")
     parser.add_argument("--strategy", type=str, default="all",
