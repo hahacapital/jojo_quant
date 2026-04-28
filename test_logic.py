@@ -466,6 +466,27 @@ def test_build_regimes_and_lookup():
 
 
 # ============================================================
+# Test 13: universe builder respects cache + membership + min history
+# ============================================================
+def test_build_universe_filters():
+    """build_universe should keep tickers in (cache ∩ membership) with ≥min_bars,
+    drop everything else, and always include commodity futures with ≥min_bars."""
+    import cross_section as cs
+
+    cache_meta = pd.DataFrame({
+        "num_bars": [3000, 3000, 1000, 3000, 3000],
+        "status": ["active", "active", "active", "active", "active"],
+    }, index=["AAPL", "MSFT", "OLDCO", "GC=F", "RANDM"])
+
+    members = {"AAPL", "MSFT"}  # OLDCO too short, RANDM not a member, GC=F is commodity
+    universe = cs._filter_universe(cache_meta, members, min_bars=2520,
+                                   commodity_set={"GC=F"})
+
+    assert set(universe) == {"AAPL", "MSFT", "GC=F"}, f"got {universe}"
+    print("  PASS: build_universe filters cache ∩ membership ∩ ≥min_bars + commodities")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -487,6 +508,7 @@ if __name__ == "__main__":
         ("trend_state no look-ahead", test_trend_state_no_lookahead),
         ("vol_bucket no look-ahead", test_vol_bucket_no_lookahead),
         ("build_regimes + lookup", test_build_regimes_and_lookup),
+        ("Universe filters", test_build_universe_filters),
     ]
 
     passed = 0

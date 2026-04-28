@@ -181,6 +181,91 @@ def lookup_regime(entry_date_str: str, regimes: pd.DataFrame) -> str:
     return str(regimes.iloc[idx[0]]["regime"])
 
 
+# ---------------------------------------------------------------------------
+# Universe construction
+# ---------------------------------------------------------------------------
+
+WIKI_SP500 = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+WIKI_RUSSELL1000 = "https://en.wikipedia.org/wiki/Russell_1000_Index"
+
+
+def _scrape_index_members() -> set[str]:
+    """Scrape Russell 1000 + S&P 500 ticker symbols from Wikipedia."""
+    members: set[str] = set()
+    for label, url in (("S&P 500", WIKI_SP500), ("Russell 1000", WIKI_RUSSELL1000)):
+        try:
+            tables = pd.read_html(url)
+        except Exception as e:
+            print(f"  [WARN] {label} scrape failed: {e}")
+            continue
+        # Heuristic: pick the first table containing a 'Symbol' or 'Ticker' column.
+        for tbl in tables:
+            cols = {c.lower(): c for c in tbl.columns.astype(str)}
+            sym_col = cols.get("symbol") or cols.get("ticker")
+            if sym_col is None:
+                continue
+            for s in tbl[sym_col].dropna().astype(str):
+                s = s.strip().replace(".", "-")  # BRK.B -> BRK-B
+                if s and " " not in s and len(s) <= 6:
+                    members.add(s)
+            break
+    return members
+
+
+def _load_or_scrape_members() -> set[str]:
+    if INDEX_MEMBERS_PATH.exists():
+        with open(INDEX_MEMBERS_PATH) as f:
+            data = json.load(f)
+        return set(data.get("members", []))
+
+    print("Scraping Russell 1000 + S&P 500 from Wikipedia...")
+    members = _scrape_index_members()
+    if not members:
+        raise RuntimeError(
+            "Index membership scrape returned empty and no cache exists; "
+            "fix the scrape or hand-create data/index_members.json with "
+            '{"members": [...]}'
+        )
+    INDEX_MEMBERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(INDEX_MEMBERS_PATH, "w") as f:
+        json.dump({"members": sorted(members),
+                   "fetched": datetime.utcnow().isoformat(timespec="seconds")},
+                  f, indent=2)
+    print(f"  Cached {len(members)} members to {INDEX_MEMBERS_PATH}")
+    return members
+
+
+def _filter_universe(meta: pd.DataFrame, members: set[str], *,
+                     min_bars: int, commodity_set: set[str]) -> list[str]:
+    """Pure helper for testing: apply filters to a meta-like DataFrame."""
+    eligible = meta[meta["num_bars"] >= min_bars]
+    keep: list[str] = []
+    for ticker in eligible.index:
+        if ticker in commodity_set:
+            keep.append(ticker)
+        elif ticker in members:
+            keep.append(ticker)
+    return sorted(keep)
+
+
+def build_universe() -> list[str]:
+    meta = dl.read_meta()
+    if meta.empty:
+        raise RuntimeError(
+            "OHLC cache is empty; run `python3 download_ohlc.py --init` first."
+        )
+    members = _load_or_scrape_members()
+    universe = _filter_universe(
+        meta, members,
+        min_bars=MIN_HISTORY_BARS,
+        commodity_set=set(EXTRA_TICKERS),
+    )
+    n_stocks = sum(1 for t in universe if t not in EXTRA_TICKERS)
+    n_commod = sum(1 for t in universe if t in EXTRA_TICKERS)
+    print(f"Universe: {n_stocks} stocks + {n_commod} commodities = {len(universe)}")
+    return universe
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="jojo cross-section backtest")
     parser.add_argument("--strategy", type=str, default="all",
