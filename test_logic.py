@@ -430,6 +430,42 @@ def test_vol_bucket_no_lookahead():
 
 
 # ============================================================
+# Test 12: combined regime labels + ffill lookup
+# ============================================================
+def test_build_regimes_and_lookup():
+    """build_regimes gives 9 buckets + warmup; lookup ffills to prior trading day."""
+    import cross_section as cs
+    np.random.seed(2)
+    n = 1800
+    dates = pd.bdate_range("2015-01-01", periods=n)
+    close = 3000 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
+    spx = pd.DataFrame({
+        "open": close, "high": close, "low": close, "close": close,
+    }, index=dates)
+
+    regimes = cs.build_regimes(spx)
+    assert {"trend_state", "vol_bucket", "regime"} <= set(regimes.columns)
+    valid_labels = {
+        f"{t}_{v}"
+        for t in ("bull", "bear", "neutral")
+        for v in ("low_vol", "mid_vol", "high_vol")
+    } | {"warmup"}
+    assert set(regimes["regime"].unique()) <= valid_labels, (
+        f"unexpected regime labels: {set(regimes['regime'].unique()) - valid_labels}"
+    )
+
+    # Lookup on a Saturday (non-trading day) should ffill to Friday.
+    fri = dates[1500]
+    sat = fri + pd.Timedelta(days=1)
+    assert cs.lookup_regime(str(sat.date()), regimes) == regimes.loc[fri, "regime"]
+
+    # Lookup before any data → 'warmup'
+    assert cs.lookup_regime("1990-01-01", regimes) == "warmup"
+
+    print("  PASS: build_regimes labels + lookup_regime ffill")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -450,6 +486,7 @@ if __name__ == "__main__":
         ("SPX cache roundtrip", test_spx_cache_roundtrip),
         ("trend_state no look-ahead", test_trend_state_no_lookahead),
         ("vol_bucket no look-ahead", test_vol_bucket_no_lookahead),
+        ("build_regimes + lookup", test_build_regimes_and_lookup),
     ]
 
     passed = 0

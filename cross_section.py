@@ -148,6 +148,39 @@ def build_vol_bucket(spx: pd.DataFrame) -> pd.Series:
     return bucket
 
 
+def build_regimes(spx: pd.DataFrame) -> pd.DataFrame:
+    """Combine trend_state and vol_bucket into a single labelled DataFrame.
+
+    Returns DataFrame indexed by date with columns:
+      trend_state, vol_bucket, regime  (regime = trend_state + '_' + vol_bucket)
+
+    Rows where either dimension is in warm-up are labelled 'warmup'.
+    """
+    trend = build_trend_state(spx)
+    vol = build_vol_bucket(spx)
+    df = pd.DataFrame({"trend_state": trend, "vol_bucket": vol})
+
+    is_warmup = (df["trend_state"] == "warmup") | (df["vol_bucket"] == "warmup")
+    df["regime"] = df["trend_state"] + "_" + df["vol_bucket"]
+    df.loc[is_warmup, "regime"] = "warmup"
+    return df
+
+
+def lookup_regime(entry_date_str: str, regimes: pd.DataFrame) -> str:
+    """Return regime label for the given date, ffill to the most recent trading day.
+
+    'warmup' if the date predates all regime data.
+    """
+    try:
+        dt = pd.Timestamp(str(entry_date_str)[:10])
+    except Exception:
+        return "warmup"
+    idx = regimes.index.get_indexer([dt], method="ffill")
+    if idx[0] < 0:
+        return "warmup"
+    return str(regimes.iloc[idx[0]]["regime"])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="jojo cross-section backtest")
     parser.add_argument("--strategy", type=str, default="all",
