@@ -287,6 +287,62 @@ def classify_trades(ticker: str, strategy: str, trades: list,
     return rows
 
 
+def _group_metrics(group: pd.DataFrame) -> dict:
+    pnls = group["pnl_pct"].astype(float).values
+    trades = len(pnls)
+    wins = int((pnls > 0).sum())
+    win_rate = wins / trades * 100 if trades else 0.0
+    gross_profit = float(pnls[pnls > 0].sum()) if trades else 0.0
+    gross_loss = float(-pnls[pnls < 0].sum()) if trades else 0.0
+    if gross_loss > 0:
+        pf = gross_profit / gross_loss
+    elif gross_profit > 0:
+        pf = float("inf")
+    else:
+        pf = 0.0
+
+    # Max drawdown on chronologically-ordered equity curve
+    chrono = group.sort_values("entry_date")["pnl_pct"].astype(float).values
+    equity = 1.0
+    peak = equity
+    max_dd = 0.0
+    for p in chrono:
+        equity *= 1 + p / 100.0
+        peak = max(peak, equity)
+        dd = (peak - equity) / peak * 100 if peak > 0 else 0
+        max_dd = max(max_dd, dd)
+
+    score = pf * math.sqrt(trades) if math.isfinite(pf) else float("inf")
+
+    return {
+        "trades": trades,
+        "win_rate": round(win_rate, 2),
+        "total_pnl": round(float(pnls.sum()), 2),
+        "avg_pnl": round(float(pnls.mean()) if trades else 0.0, 3),
+        "pf": pf if math.isinf(pf) else round(pf, 3),
+        "max_dd": round(max_dd, 2),
+        "avg_holding": round(float(group["holding_days"].mean()) if trades else 0.0, 1),
+        "score": score if math.isinf(score) else round(score, 3),
+    }
+
+
+def aggregate(records: list[dict]) -> pd.DataFrame:
+    if not records:
+        return pd.DataFrame(columns=[
+            "ticker", "strategy", "regime",
+            "trades", "win_rate", "total_pnl", "avg_pnl",
+            "pf", "max_dd", "avg_holding", "score",
+        ])
+    df = pd.DataFrame(records)
+    grouped = df.groupby(["ticker", "strategy", "regime"], sort=False)
+    rows = []
+    for (ticker, strategy, regime), grp in grouped:
+        m = _group_metrics(grp)
+        rows.append({"ticker": ticker, "strategy": strategy, "regime": regime, **m})
+    out = pd.DataFrame(rows)
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="jojo cross-section backtest")
     parser.add_argument("--strategy", type=str, default="all",

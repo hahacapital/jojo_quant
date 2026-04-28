@@ -518,6 +518,33 @@ def test_classify_trades_tags_entry_regime():
 
 
 # ============================================================
+# Test 15: aggregate computes pf, win_rate, max_dd
+# ============================================================
+def test_aggregate_metrics():
+    """aggregate produces correct trades / win_rate / pf / max_dd."""
+    import cross_section as cs
+    rows = [
+        {"ticker": "A", "strategy": "S1", "regime": "bull_low_vol",
+         "entry_date": "2020-01-02", "pnl_pct": 10.0, "holding_days": 5},
+        {"ticker": "A", "strategy": "S1", "regime": "bull_low_vol",
+         "entry_date": "2020-02-02", "pnl_pct": -5.0, "holding_days": 3},
+        {"ticker": "A", "strategy": "S1", "regime": "bull_low_vol",
+         "entry_date": "2020-03-02", "pnl_pct": 20.0, "holding_days": 8},
+    ]
+    agg = cs.aggregate(rows)
+    r = agg.iloc[0]
+    assert r["trades"] == 3
+    # win_rate is stored rounded to 2 decimals; tolerance must accommodate that
+    assert abs(r["win_rate"] - (2 / 3 * 100)) < 1e-2
+    assert abs(r["total_pnl"] - 25.0) < 1e-6
+    # gross profit 30, gross loss 5 → pf = 6 (rounded to 3 decimals)
+    assert abs(r["pf"] - 6.0) < 1e-3
+    # equity 1.0 → 1.10 → 1.045 → 1.254. peak=1.10 then dropping to 1.045 = 5% drawdown
+    assert abs(r["max_dd"] - 5.0) < 1e-2
+    print("  PASS: aggregate metrics match expected values")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -541,6 +568,7 @@ if __name__ == "__main__":
         ("build_regimes + lookup", test_build_regimes_and_lookup),
         ("Universe filters", test_build_universe_filters),
         ("classify_trades", test_classify_trades_tags_entry_regime),
+        ("Aggregate metrics", test_aggregate_metrics),
     ]
 
     passed = 0
