@@ -92,6 +92,38 @@ def load_or_fetch_spx(max_staleness_days: int = 7) -> pd.DataFrame:
     return df
 
 
+# ---------------------------------------------------------------------------
+# Regime classification
+# ---------------------------------------------------------------------------
+
+def build_trend_state(spx: pd.DataFrame) -> pd.Series:
+    """Return per-date trend_state in {'bull', 'bear', 'neutral'}.
+
+    bull    : close >= SMA225 AND SMA50 >= SMA200
+    bear    : close <  SMA225 AND SMA50 <  SMA200
+    neutral : otherwise (mixed signals)
+
+    All inputs use only data on or before each date. NaN rows
+    (warm-up) marked 'warmup'.
+    """
+    close = spx["close"].astype(float)
+    sma50 = close.rolling(TREND_SMA_FAST).mean()
+    sma200 = close.rolling(TREND_SMA_SLOW).mean()
+    sma225 = close.rolling(TREND_SMA_REGIME).mean()
+
+    state = pd.Series("warmup", index=close.index, dtype=object)
+    valid = sma200.notna() & sma225.notna() & sma50.notna()
+
+    bull_mask = valid & (close >= sma225) & (sma50 >= sma200)
+    bear_mask = valid & (close < sma225) & (sma50 < sma200)
+    neutral_mask = valid & ~bull_mask & ~bear_mask
+
+    state[bull_mask] = "bull"
+    state[bear_mask] = "bear"
+    state[neutral_mask] = "neutral"
+    return state
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="jojo cross-section backtest")
     parser.add_argument("--strategy", type=str, default="all",

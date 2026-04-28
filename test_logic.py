@@ -375,6 +375,33 @@ def test_spx_cache_roundtrip(tmp_dir=None):
 
 
 # ============================================================
+# Test 10: trend_state has no look-ahead
+# ============================================================
+def test_trend_state_no_lookahead():
+    """trend_state[t] computed on full series == trend_state[t] on truncated."""
+    import cross_section as cs
+    np.random.seed(0)
+    n = 600
+    dates = pd.bdate_range("2018-01-01", periods=n)
+    close = 3000 + np.cumsum(np.random.randn(n) * 5)
+    spx_full = pd.DataFrame({
+        "open": close, "high": close * 1.01, "low": close * 0.99, "close": close,
+    }, index=dates)
+
+    cutoff_idx = 500
+    cutoff = dates[cutoff_idx]
+    spx_trunc = spx_full.iloc[: cutoff_idx + 1]
+
+    trend_full = cs.build_trend_state(spx_full)
+    trend_trunc = cs.build_trend_state(spx_trunc)
+    assert trend_full.loc[cutoff] == trend_trunc.loc[cutoff], (
+        f"trend_state[{cutoff.date()}] differs: full={trend_full.loc[cutoff]} "
+        f"vs trunc={trend_trunc.loc[cutoff]}"
+    )
+    print("  PASS: trend_state has no look-ahead")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -393,6 +420,7 @@ if __name__ == "__main__":
         ("E2E backtest", test_run_backtest_e2e),
         ("Screener stop loss", test_screener_stop_loss_state),
         ("SPX cache roundtrip", test_spx_cache_roundtrip),
+        ("trend_state no look-ahead", test_trend_state_no_lookahead),
     ]
 
     passed = 0
