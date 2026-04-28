@@ -343,6 +343,38 @@ def aggregate(records: list[dict]) -> pd.DataFrame:
     return out
 
 
+def rank(agg: pd.DataFrame, *, min_trades: int = MIN_TRADES_DEFAULT
+         ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Filter & sort the aggregate. Returns (main_rank, perfect_record).
+
+    main_rank: trades >= min_trades AND pf finite, sorted by score desc,
+               total_pnl desc, win_rate desc.
+    perfect_record: trades >= min_trades AND pf == inf (all wins).
+    """
+    if agg.empty:
+        empty = agg.iloc[0:0].copy()
+        return empty, empty.copy()
+
+    eligible = agg[agg["trades"] >= min_trades].copy()
+    if eligible.empty:
+        return eligible, eligible.copy()
+
+    pf_series = eligible["pf"]
+    is_inf = pf_series.apply(lambda v: isinstance(v, float) and math.isinf(v))
+    perfect = eligible[is_inf].copy()
+    main = eligible[~is_inf].copy()
+
+    main = main.sort_values(
+        by=["regime", "score", "total_pnl", "win_rate"],
+        ascending=[True, False, False, False],
+    ).reset_index(drop=True)
+    perfect = perfect.sort_values(
+        by=["regime", "total_pnl", "trades"],
+        ascending=[True, False, False],
+    ).reset_index(drop=True)
+    return main, perfect
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="jojo cross-section backtest")
     parser.add_argument("--strategy", type=str, default="all",

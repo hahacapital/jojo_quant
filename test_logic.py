@@ -545,6 +545,43 @@ def test_aggregate_metrics():
 
 
 # ============================================================
+# Test 16: rank applies min-trades filter and splits perfect records
+# ============================================================
+def test_rank_filters_and_splits():
+    """rank() drops trades < min_trades and routes pf=inf to perfect_record."""
+    import math as _math
+    import cross_section as cs
+    agg = pd.DataFrame([
+        {"ticker": "LOW", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 3, "win_rate": 100.0, "total_pnl": 12.0, "avg_pnl": 4.0,
+         "pf": 5.0, "max_dd": 0.5, "avg_holding": 4, "score": 5 * _math.sqrt(3)},
+        {"ticker": "PERF", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 8, "win_rate": 100.0, "total_pnl": 80.0, "avg_pnl": 10.0,
+         "pf": float("inf"), "max_dd": 0.0, "avg_holding": 5, "score": float("inf")},
+        {"ticker": "GOOD", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 12, "win_rate": 75.0, "total_pnl": 200.0, "avg_pnl": 16.7,
+         "pf": 4.0, "max_dd": 5.0, "avg_holding": 6, "score": 4 * _math.sqrt(12)},
+        {"ticker": "TIE1", "strategy": "S1", "regime": "bear_high_vol",
+         "trades": 6, "win_rate": 50.0, "total_pnl": 30.0, "avg_pnl": 5.0,
+         "pf": 2.0, "max_dd": 8.0, "avg_holding": 5, "score": 2 * _math.sqrt(6)},
+        {"ticker": "TIE2", "strategy": "S1", "regime": "bear_high_vol",
+         "trades": 6, "win_rate": 50.0, "total_pnl": 60.0, "avg_pnl": 10.0,
+         "pf": 2.0, "max_dd": 8.0, "avg_holding": 5, "score": 2 * _math.sqrt(6)},
+    ])
+    main_rank, perfect = cs.rank(agg, min_trades=5)
+
+    # LOW dropped (trades < 5); PERF in perfect; GOOD in main
+    assert "LOW" not in set(main_rank["ticker"])
+    assert set(perfect["ticker"]) == {"PERF"}
+    assert "GOOD" in set(main_rank["ticker"])
+
+    # Tie break: same score, TIE2 has higher total_pnl → ranks above TIE1
+    bear = main_rank[main_rank["regime"] == "bear_high_vol"].reset_index(drop=True)
+    assert list(bear["ticker"]) == ["TIE2", "TIE1"]
+    print("  PASS: rank filters min-trades and splits perfect records")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -569,6 +606,7 @@ if __name__ == "__main__":
         ("Universe filters", test_build_universe_filters),
         ("classify_trades", test_classify_trades_tags_entry_regime),
         ("Aggregate metrics", test_aggregate_metrics),
+        ("rank filters + splits", test_rank_filters_and_splits),
     ]
 
     passed = 0
