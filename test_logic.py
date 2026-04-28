@@ -487,6 +487,37 @@ def test_build_universe_filters():
 
 
 # ============================================================
+# Test 14: classify_trades attaches the right regime per trade
+# ============================================================
+def test_classify_trades_tags_entry_regime():
+    """classify_trades produces (ticker, strategy, regime, pnl_pct, holding_days)
+    rows where regime corresponds to entry_date."""
+    import cross_section as cs
+    from backtest import Trade
+
+    dates = pd.bdate_range("2020-01-01", periods=10)
+    regimes = pd.DataFrame({
+        "trend_state": ["bull"] * 10,
+        "vol_bucket": ["low_vol"] * 5 + ["high_vol"] * 5,
+        "regime": ["bull_low_vol"] * 5 + ["bull_high_vol"] * 5,
+    }, index=dates)
+
+    trades = [
+        Trade(entry_date=str(dates[2]), entry_price=100, exit_date=str(dates[4]),
+              exit_price=110, holding_days=2, pnl_pct=10.0, exit_reason="x"),
+        Trade(entry_date=str(dates[7]), entry_price=200, exit_date=str(dates[9]),
+              exit_price=180, holding_days=2, pnl_pct=-10.0, exit_reason="y"),
+    ]
+    rows = cs.classify_trades("AAPL", "S1", trades, regimes)
+    assert len(rows) == 2
+    assert rows[0]["regime"] == "bull_low_vol"
+    assert rows[1]["regime"] == "bull_high_vol"
+    assert rows[0]["ticker"] == "AAPL" and rows[0]["strategy"] == "S1"
+    assert rows[0]["pnl_pct"] == 10.0
+    print("  PASS: classify_trades tags entry-date regime per trade")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -509,6 +540,7 @@ if __name__ == "__main__":
         ("vol_bucket no look-ahead", test_vol_bucket_no_lookahead),
         ("build_regimes + lookup", test_build_regimes_and_lookup),
         ("Universe filters", test_build_universe_filters),
+        ("classify_trades", test_classify_trades_tags_entry_regime),
     ]
 
     passed = 0

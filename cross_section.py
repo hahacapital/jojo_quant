@@ -266,6 +266,27 @@ def build_universe() -> list[str]:
     return universe
 
 
+# ---------------------------------------------------------------------------
+# Trade classification + aggregation
+# ---------------------------------------------------------------------------
+
+def classify_trades(ticker: str, strategy: str, trades: list,
+                    regimes: pd.DataFrame) -> list[dict]:
+    """Return a record per trade with entry-date regime attached."""
+    rows: list[dict] = []
+    for t in trades:
+        regime = lookup_regime(t.entry_date, regimes)
+        rows.append({
+            "ticker": ticker,
+            "strategy": strategy,
+            "regime": regime,
+            "entry_date": str(t.entry_date)[:10],
+            "pnl_pct": float(t.pnl_pct),
+            "holding_days": int(t.holding_days),
+        })
+    return rows
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="jojo cross-section backtest")
     parser.add_argument("--strategy", type=str, default="all",
