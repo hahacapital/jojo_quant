@@ -375,6 +375,80 @@ def rank(agg: pd.DataFrame, *, min_trades: int = MIN_TRADES_DEFAULT
     return main, perfect
 
 
+# ---------------------------------------------------------------------------
+# Output rendering
+# ---------------------------------------------------------------------------
+
+REGIME_ORDER = [
+    "bull_low_vol", "bull_mid_vol", "bull_high_vol",
+    "neutral_low_vol", "neutral_mid_vol", "neutral_high_vol",
+    "bear_low_vol", "bear_mid_vol", "bear_high_vol",
+]
+
+
+def _format_row(rank_idx: int, row: pd.Series) -> str:
+    pf = row["pf"]
+    pf_str = "inf" if isinstance(pf, float) and math.isinf(pf) else f"{pf:.2f}"
+    score = row["score"]
+    score_str = "inf" if isinstance(score, float) and math.isinf(score) else f"{score:.2f}"
+    return (f"| {rank_idx} | {row['ticker']} | {int(row['trades'])} | "
+            f"{row['win_rate']:.1f} | {row['total_pnl']:+.1f} | "
+            f"{pf_str} | {row['max_dd']:.1f} | {score_str} |")
+
+
+def render_markdown(main_rank: pd.DataFrame, perfect: pd.DataFrame,
+                    regimes: pd.DataFrame, *, top_n: int,
+                    universe_size: tuple[int, int],
+                    period: tuple[str, str],
+                    strategies: list[str]) -> str:
+    n_stocks, n_commod = universe_size
+    start_str, end_str = period
+    parts: list[str] = []
+    parts.append(f"# Cross-Section Report — {datetime.utcnow().date()}\n")
+    parts.append("## Universe\n")
+    parts.append(f"Stocks: {n_stocks}  |  Commodities: {n_commod}  |  "
+                 f"Min history: {MIN_HISTORY_BARS // 252}y\n")
+    parts.append(f"Effective period: {start_str} → {end_str}\n")
+    parts.append("\n*Note*: Universe drawn from current Russell 1000 + S&P 500 "
+                 "membership snapshot, intersected with the local OHLC cache. "
+                 "Survivorship bias is acknowledged; delisted names are not in this "
+                 "table.\n")
+
+    parts.append("\n## Regime time distribution (trading days)\n")
+    counts = regimes["regime"].value_counts()
+    parts.append("| regime | days |\n|--------|------|")
+    for r in REGIME_ORDER + ["warmup"]:
+        if r in counts.index:
+            parts.append(f"| {r} | {int(counts[r])} |")
+
+    for strategy in strategies:
+        nice = "超买动量" if strategy == "S1" else "超卖反转"
+        parts.append(f"\n## Strategy {strategy[1]} — {nice}\n")
+        s_main = main_rank[main_rank["strategy"] == strategy]
+        s_perf = perfect[perfect["strategy"] == strategy]
+        for regime in REGIME_ORDER:
+            sub = s_main[s_main["regime"] == regime].head(top_n)
+            if sub.empty:
+                continue
+            parts.append(f"\n### {regime}  (top {len(sub)} by score, "
+                         f"min trades={MIN_TRADES_DEFAULT})\n")
+            parts.append("| rank | ticker | trades | win% | total_pnl% | "
+                         "pf | max_dd% | score |")
+            parts.append("|------|--------|--------|------|------------|"
+                         "----|---------|-------|")
+            for i, (_, row) in enumerate(sub.iterrows(), start=1):
+                parts.append(_format_row(i, row))
+
+        if not s_perf.empty:
+            parts.append(f"\n### Perfect-record entries (pf = inf)\n")
+            parts.append("| ticker | regime | trades | total_pnl% |")
+            parts.append("|--------|--------|--------|------------|")
+            for _, row in s_perf.iterrows():
+                parts.append(f"| {row['ticker']} | {row['regime']} | "
+                             f"{int(row['trades'])} | {row['total_pnl']:+.1f} |")
+    return "\n".join(parts) + "\n"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="jojo cross-section backtest")
     parser.add_argument("--strategy", type=str, default="all",
