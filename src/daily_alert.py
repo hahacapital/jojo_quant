@@ -140,6 +140,34 @@ def filter_top30(csv_df: pd.DataFrame, *, strategy: str, regime: str,
     return set(sub.head(n)["ticker"].astype(str).tolist())
 
 
+# ---------------------------------------------------------------------------
+# SPX freshness gate
+# ---------------------------------------------------------------------------
+
+def expected_last_us_trading_day() -> pd.Timestamp:
+    """Most recent US trading day on or before today (UTC, midnight)."""
+    today = pd.Timestamp.utcnow().normalize().tz_localize(None)
+    if US_BDAY.is_on_offset(today):
+        return today
+    return (today - US_BDAY).normalize()
+
+
+def check_spx_fresh(spx: pd.DataFrame) -> None:
+    """Exit with EXIT_SPX_STALE if SPX last bar precedes the expected day."""
+    if spx is None or spx.empty:
+        print("[ABORT] SPX DataFrame empty; cannot evaluate freshness.")
+        sys.exit(EXIT_SPX_STALE)
+    expected = expected_last_us_trading_day()
+    last = spx.index[-1].normalize()
+    if last < expected:
+        print(
+            f"[ABORT] SPX last bar {last.date()} < expected "
+            f"{expected.date()}. yfinance not updated yet; exiting. "
+            "Re-run later."
+        )
+        sys.exit(EXIT_SPX_STALE)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",

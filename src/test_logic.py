@@ -637,6 +637,43 @@ def test_filter_top30_excludes_low_trades_and_inf_pf():
 
 
 # ============================================================
+# Test: expected_last_us_trading_day returns a US business day
+# ============================================================
+def test_expected_last_us_trading_day_returns_business_day():
+    """Helper returns a US business day on or before today."""
+    import daily_alert
+    d = daily_alert.expected_last_us_trading_day()
+    today = pd.Timestamp.utcnow().normalize().tz_localize(None)
+    assert d <= today, f"{d} should be <= today ({today})"
+    assert daily_alert.US_BDAY.is_on_offset(d), (
+        f"{d} should land on a US business day"
+    )
+    print(f"  PASS: expected_last_us_trading_day = {d.date()}")
+
+
+# ============================================================
+# Test: check_spx_fresh aborts when last bar is too old
+# ============================================================
+def test_check_spx_fresh_aborts_when_stale():
+    """check_spx_fresh sys.exits when SPX last bar precedes the expected day."""
+    import daily_alert
+
+    stale = pd.DataFrame(
+        {"close": [100.0]},
+        index=pd.DatetimeIndex(
+            [pd.Timestamp.utcnow().normalize().tz_localize(None) - pd.Timedelta(days=30)]
+        ),
+    )
+    try:
+        daily_alert.check_spx_fresh(stale)
+    except SystemExit as e:
+        assert e.code == daily_alert.EXIT_SPX_STALE
+        print("  PASS: check_spx_fresh aborts on stale data")
+        return
+    raise AssertionError("check_spx_fresh did not abort on stale SPX")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -664,6 +701,8 @@ if __name__ == "__main__":
         ("daily_alert load_env", test_load_env_reads_dotenv),
         ("daily_alert load_latest_csv", test_load_latest_cross_section_csv_picks_newest),
         ("daily_alert filter_top30", test_filter_top30_excludes_low_trades_and_inf_pf),
+        ("daily_alert expected_last_us_trading_day", test_expected_last_us_trading_day_returns_business_day),
+        ("daily_alert check_spx_fresh stale", test_check_spx_fresh_aborts_when_stale),
     ]
 
     passed = 0
