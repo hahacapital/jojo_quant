@@ -182,6 +182,24 @@ def compute_today_regime() -> tuple[str, pd.Timestamp]:
     return str(regimes.loc[last_date, "regime"]), last_date
 
 
+# ---------------------------------------------------------------------------
+# Signal generation (reuses screener)
+# ---------------------------------------------------------------------------
+
+def get_today_signals(universe: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Download today's data for `universe` and run screener.scan_signals.
+
+    Returns (s1_df, s2_df) of today's S1 and S2 signals (cols match
+    screener.scan_signals output: ticker, date, close, jojo, prev,
+    plus atr_pct for S1 and recent_low for S2).
+    """
+    print(f"Downloading {len(universe)} tickers (last 120 days)...")
+    all_data = screener.download_ohlc(universe, days=120, batch_size=200)
+    print("Scanning signals...")
+    s1, s2 = screener.scan_signals(all_data, strategy="all")
+    return s1, s2
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",
