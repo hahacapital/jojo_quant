@@ -570,6 +570,38 @@ def test_load_env_reads_dotenv():
 
 
 # ============================================================
+# Test: load_latest_cross_section_csv picks newest by filename
+# ============================================================
+def test_load_latest_cross_section_csv_picks_newest():
+    """When multiple cross_section_*.csv exist, the latest filename wins."""
+    import tempfile
+    from pathlib import Path
+    import daily_alert
+
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        original = daily_alert.REPORTS_DIR
+        daily_alert.REPORTS_DIR = d
+        try:
+            (d / "cross_section_2025-12-01.csv").write_text(
+                "ticker,strategy,regime,trades,win_rate,total_pnl,avg_pnl,pf,max_dd,avg_holding,score\n"
+                "AAA,S1,bull_low_vol,10,60,50,5,2.5,5,8,7.9\n"
+            )
+            (d / "cross_section_2026-04-29.csv").write_text(
+                "ticker,strategy,regime,trades,win_rate,total_pnl,avg_pnl,pf,max_dd,avg_holding,score\n"
+                "BBB,S2,bear_high_vol,8,55,30,3.7,2.0,4,7,5.7\n"
+            )
+            df, name = daily_alert.load_latest_cross_section_csv()
+            assert name == "cross_section_2026-04-29"
+            assert "BBB" in df["ticker"].values
+            assert "AAA" not in df["ticker"].values
+        finally:
+            daily_alert.REPORTS_DIR = original
+
+    print("  PASS: load_latest_cross_section_csv picks newest")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -595,6 +627,7 @@ if __name__ == "__main__":
         ("Aggregate metrics", test_aggregate_metrics),
         ("rank filters + splits", test_rank_filters_and_splits),
         ("daily_alert load_env", test_load_env_reads_dotenv),
+        ("daily_alert load_latest_csv", test_load_latest_cross_section_csv_picks_newest),
     ]
 
     passed = 0

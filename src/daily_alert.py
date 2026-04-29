@@ -93,6 +93,27 @@ def load_env() -> tuple[str, str]:
     return token, chat_id
 
 
+# ---------------------------------------------------------------------------
+# Cross-section CSV
+# ---------------------------------------------------------------------------
+
+def load_latest_cross_section_csv() -> tuple[pd.DataFrame, str]:
+    """Return (DataFrame, stem) for the newest reports/cross_section_*.csv.
+
+    Filenames are date-stamped (cross_section_YYYY-MM-DD.csv) so a plain
+    lexicographic sort == chronological.
+    """
+    files = sorted(REPORTS_DIR.glob("cross_section_*.csv"))
+    if not files:
+        raise RuntimeError(
+            f"No cross_section_*.csv in {REPORTS_DIR}. "
+            "Run `python3 src/cross_section.py` first."
+        )
+    latest = files[-1]
+    df = pd.read_csv(latest)
+    return df, latest.stem
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",
