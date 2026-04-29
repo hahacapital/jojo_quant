@@ -200,6 +200,48 @@ def get_today_signals(universe: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
     return s1, s2
 
 
+# ---------------------------------------------------------------------------
+# Company info
+# ---------------------------------------------------------------------------
+
+def fetch_company_info(ticker: str) -> dict:
+    """Return {name, sector, industry, description} for a ticker.
+
+    Commodity futures use a hardcoded fallback (CN_NAMES + Commodities/Futures).
+    Stocks query FMP profile API. Network or 4xx/5xx failures degrade to
+    {ticker, '', '', ''} — the alert never blocks on FMP issues.
+    """
+    if ticker in screener.EXTRA_TICKERS_SET:
+        return {
+            "name": screener.CN_NAMES.get(ticker, ticker),
+            "sector": "Commodities",
+            "industry": "Futures",
+            "description": "",
+        }
+    try:
+        resp = requests.get(
+            screener.FMP_PROFILE_URL,
+            params={"symbol": ticker, "apikey": screener.FMP_API_KEY},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                item = data[0]
+                desc = (item.get("description") or "").strip()
+                if len(desc) > 280:
+                    desc = desc[:277] + "..."
+                return {
+                    "name": item.get("companyName") or ticker,
+                    "sector": item.get("sector", "") or "",
+                    "industry": item.get("industry", "") or "",
+                    "description": desc,
+                }
+    except Exception as e:
+        print(f"  [WARN] FMP fetch {ticker}: {e}")
+    return {"name": ticker, "sector": "", "industry": "", "description": ""}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",
