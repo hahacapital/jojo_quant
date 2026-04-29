@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -25,12 +26,15 @@ from backtest import Trade, run_backtest
 # Config
 # ---------------------------------------------------------------------------
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+REPORTS_DIR = REPO_ROOT / "reports"
+
 TICKERS = ["TSM", "GOOG", "AAPL", "TSLA", "MSFT", "PLTR", "ANET", "NVDA",
            "HOOD", "MU", "RKLB", "AMZN", "META"]
 START_DATE = "2009-01-01"
 SPX_SYMBOL = "^GSPC"
 SMA_LENGTH = 225
-REPORT_PATH = "reports/backtest_report.md"
+REPORT_PATH = str(REPORTS_DIR / "backtest_report.md")
 S3_DIR = "s3://staking-ledger-bpt/jojo_quant/reports/"
 
 
@@ -411,7 +415,8 @@ def main():
 
     # Step 4: Generate reports
     print(f"\n[4/5] Generating reports...")
-    os.makedirs("reports/stocks", exist_ok=True)
+    stocks_dir = REPORTS_DIR / "stocks"
+    stocks_dir.mkdir(parents=True, exist_ok=True)
 
     # Main summary report
     report = generate_report(all_results, regime, run_date)
@@ -422,7 +427,7 @@ def main():
     # Per-stock detail files
     for sym, r1, r2, r1_opt, r2a_opt, r2b_opt in all_results:
         detail = generate_stock_detail(sym, r1, r2, r1_opt, r2a_opt, r2b_opt, regime, run_date)
-        detail_path = f"reports/stocks/{sym}.md"
+        detail_path = stocks_dir / f"{sym}.md"
         with open(detail_path, "w") as f:
             f.write(detail)
         print(f"  {detail_path} ({len(detail)} chars)")
@@ -431,13 +436,15 @@ def main():
     print(f"\n[5/5] Publishing...")
     if not args.no_push:
         try:
-            subprocess.run(["git", "add", "reports/"], check=True, capture_output=True)
+            subprocess.run(["git", "add", str(REPORTS_DIR)], check=True,
+                           capture_output=True, cwd=REPO_ROOT)
             subprocess.run(
                 ["git", "commit", "-m",
                  f"Update backtest report {run_date}\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"],
-                check=True, capture_output=True,
+                check=True, capture_output=True, cwd=REPO_ROOT,
             )
-            subprocess.run(["git", "push"], check=True, capture_output=True)
+            subprocess.run(["git", "push"], check=True, capture_output=True,
+                           cwd=REPO_ROOT)
             print("  Pushed to GitHub.")
         except subprocess.CalledProcessError as e:
             print(f"  Git push failed: {e.stderr.decode() if e.stderr else e}")
@@ -447,7 +454,7 @@ def main():
     if not args.no_s3:
         try:
             subprocess.run(
-                ["aws", "s3", "sync", "reports/", S3_DIR],
+                ["aws", "s3", "sync", str(REPORTS_DIR), S3_DIR],
                 check=True, capture_output=True,
             )
             print(f"  Uploaded to {S3_DIR}")

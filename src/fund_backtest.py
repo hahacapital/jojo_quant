@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from io import StringIO
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -31,6 +32,8 @@ import yfinance as yf
 
 from indicators import compute_jojo, _rma
 from screener import EXTRA_TICKERS
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ---------------------------------------------------------------------------
 # Config
@@ -1231,12 +1234,12 @@ def main():
                         help="ATR%% inverse position sizing (lower vol = bigger position)")
     parser.add_argument("--compare", action="store_true",
                         help="Run 4 configs and compare: base / +regime / +vol / +both")
-    parser.add_argument("--cache-dir", type=str, default="data/",
-                        help="Cache directory for OHLC data (default: data/)")
+    parser.add_argument("--cache-dir", type=str, default=str(REPO_ROOT / "data"),
+                        help="Cache directory for OHLC data (default: <repo>/data/)")
     parser.add_argument("--no-cache", action="store_true",
                         help="Force re-download (skip cache)")
-    parser.add_argument("--output-dir", type=str, default="reports/",
-                        help="Output directory (default: reports/)")
+    parser.add_argument("--output-dir", type=str, default=str(REPO_ROOT / "reports"),
+                        help="Output directory (default: <repo>/reports/)")
     parser.add_argument("--rank-method", type=str, default="pf",
                         choices=["pf", "mktcap", "mktcap_asc", "jojo", "jojo_asc"],
                         help="Ranking method: pf, mktcap (large first), mktcap_asc (small first), jojo (high first), jojo_asc (low first)")

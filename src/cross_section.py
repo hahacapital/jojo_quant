@@ -35,7 +35,7 @@ from screener import EXTRA_TICKERS
 # Paths & constants
 # ---------------------------------------------------------------------------
 
-REPO_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 SPX_CACHE_PATH = REPO_ROOT / "data" / "spx.parquet"
 INDEX_MEMBERS_PATH = REPO_ROOT / "data" / "index_members.json"
 REPORTS_DIR = REPO_ROOT / "reports"
