@@ -121,7 +121,7 @@ def test_stop_loss_at_close():
     assert t.entry_price == 100.0
     # Stop loss exit at bar 25's close (75.0), NOT next bar open
     assert t.exit_price == 75.0, f"Stop loss exit should be at close (75.0), got {t.exit_price}"
-    assert "止损" in t.exit_reason
+    assert "Stop loss" in t.exit_reason
 
     print("  PASS: Stop loss exits at current bar close (intraday)")
 
@@ -272,7 +272,7 @@ def test_run_backtest_e2e():
         entry_dt = pd.Timestamp(str(t.entry_date)[:10])
         if entry_dt in df.index:
             entry_bar_open = float(df.loc[entry_dt, "open"])
-            if t.exit_reason != "持仓中":  # skip open positions
+            if t.exit_reason != "Open position":  # skip open positions
                 pass  # entry check only
 
     print(f"  PASS: E2E test — S1: {r1.num_trades} trades, S2: {r2.num_trades} trades")

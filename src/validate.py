@@ -87,9 +87,9 @@ def validate_symbol(symbol: str, tv_path: str):
     corr = np.corrcoef(ours, tvs)[0, 1]
 
     print(f"  Rows compared: {len(matched)}")
-    print(f"  MAE (平均绝对误差): {mae:.4f}")
-    print(f"  Max error (最大误差): {max_err:.4f}")
-    print(f"  Correlation (相关系数): {corr:.6f}")
+    print(f"  MAE (mean absolute error): {mae:.4f}")
+    print(f"  Max error: {max_err:.4f}")
+    print(f"  Correlation: {corr:.6f}")
 
     worst_idx = np.argsort(diff)[-5:][::-1]
     print(f"\n  Worst 5 rows:")

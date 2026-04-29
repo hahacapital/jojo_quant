@@ -47,7 +47,7 @@ Each regime is `<trend>_<vol>` — combination of an SPX **trend state** and a *
 | bear_high_vol | 492 |
 | warmup | 281 |
 
-## Strategy 1 — 超买动量
+## Strategy 1 — Overbought Momentum
 
 
 ### bull_low_vol  (top 3 by score, min trades=5)
@@ -88,7 +88,7 @@ Each regime is `<trend>_<vol>` — combination of an SPX **trend state** and a *
 | 1 | A | 11 | 36.4 | -7.2 | 0.73 | 13.6 | 2.41 |
 | 2 | AAL | 7 | 42.9 | -15.8 | 0.40 | 17.2 | 1.05 |
 
-## Strategy 2 — 超卖反转
+## Strategy 2 — Oversold Reversal
 
 
 ### bull_low_vol  (top 3 by score, min trades=5)

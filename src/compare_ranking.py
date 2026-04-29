@@ -2,10 +2,10 @@
 Compare different position ranking methods for the fund backtester.
 
 Tests 4 ranking approaches on the 13 report stocks using Strategy 1:
-  A. jojo值降序 (highest momentum first)
-  B. 市值降序 (largest market cap first)
-  C. ATR%降序 (highest volatility first)
-  D. 历史盈亏比降序 (best historical profit factor first)
+  A. jojo value descending (highest momentum first)
+  B. market cap descending (largest market cap first)
+  C. ATR% descending (highest volatility first)
+  D. historical profit factor descending (best historical profit factor first)
 
 Usage:
     python compare_ranking.py
@@ -172,7 +172,7 @@ def run_fund(data, jojo_cache, atr_cache, rank_fn, label):
             price = float(data[sym].loc[date, "close"])
             pnl = (price / pos.entry_price - 1) * 100
             if pnl <= -STOP_LOSS_PCT:
-                to_close.append((sym, price, f"止损({STOP_LOSS_PCT}%)"))
+                to_close.append((sym, price, f"Stop loss ({STOP_LOSS_PCT}%)"))
 
         for sym, price, reason in to_close:
             pos = positions.pop(sym)
@@ -196,7 +196,7 @@ def run_fund(data, jojo_cache, atr_cache, rank_fn, label):
             # S1 sell: cross below 68
             if j_today < 68 and j_yest >= 68:
                 price = float(data[sym].loc[date, "close"])
-                to_sell.append((sym, price, "下穿68"))
+                to_sell.append((sym, price, "Crossed below 68"))
 
         for sym, price, reason in to_sell:
             pos = positions.pop(sym)
@@ -265,7 +265,7 @@ def run_fund(data, jojo_cache, atr_cache, rank_fn, label):
             price = float(data[sym].loc[last_date, "close"])
             days = (last_date - pos.entry_date).days
             pnl = (price / pos.entry_price - 1) * 100
-            trades.append(FundTrade(sym, str(pos.entry_date)[:10], str(last_date)[:10], round(pnl, 2), days, "持仓中"))
+            trades.append(FundTrade(sym, str(pos.entry_date)[:10], str(last_date)[:10], round(pnl, 2), days, "Open position"))
 
     return compute_fund_metrics(snapshots, trades, label)
 
@@ -378,10 +378,10 @@ def main():
         return sorted(candidates, key=lambda x: mktcap_proxy.get(x[0], 0), reverse=True)
 
     methods = [
-        (rank_by_jojo, "A: jojo值降序"),
-        (rank_by_mktcap, "B: 市值降序"),
-        (rank_by_atr, "C: ATR%降序"),
-        (rank_by_pf, "D: 历史盈亏比降序"),
+        (rank_by_jojo, "A: jojo desc"),
+        (rank_by_mktcap, "B: market cap desc"),
+        (rank_by_atr, "C: ATR% desc"),
+        (rank_by_pf, "D: historical profit factor desc"),
     ]
 
     for max_pos in [5, 10, 20]:
@@ -395,9 +395,9 @@ def main():
             results.append(r)
 
         print("\n" + "=" * 115)
-        print(f"排序方案对比 | 策略1 | S&P500 ({len(data)}只) | {START_DATE}~今 | 初始${INITIAL_CAPITAL:,} | 最大仓位 {max_pos}")
+        print(f"Ranking comparison | Strategy 1 | S&P500 ({len(data)} stocks) | {START_DATE}~today | Initial ${INITIAL_CAPITAL:,} | Max positions {max_pos}")
         print("=" * 115)
-        header = f"{'方案':<22s} {'总收益%':>8s} {'年化%':>7s} {'最大回撤%':>9s} {'Sharpe':>7s} {'Sortino':>8s} {'交易数':>6s} {'胜率%':>6s} {'盈亏比':>7s} {'终值':>12s}"
+        header = f"{'Method':<22s} {'TotRet%':>8s} {'AnnRet%':>7s} {'MaxDD%':>9s} {'Sharpe':>7s} {'Sortino':>8s} {'Trades':>6s} {'Win%':>6s} {'PF':>7s} {'Final':>12s}"
         print(header)
         print("-" * 115)
         for r in results:

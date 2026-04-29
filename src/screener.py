@@ -1,8 +1,8 @@
 """
 jojo_quant (韭韭量化) — scan stocks and commodities for jojo signals.
 
-Strategy 1 (超买动量): jojo crosses UP through 76 today (ATR% >= 2.0)
-Strategy 2 (超卖反转): jojo was below 28 and turns upward today
+Strategy 1 (Overbought Momentum): jojo crosses UP through 76 today (ATR% >= 2.0)
+Strategy 2 (Oversold Reversal): jojo was below 28 and turns upward today
 
 Usage:
     python screener.py                        # scan both strategies
@@ -565,7 +565,7 @@ def scan_signals(all_data: dict[str, pd.DataFrame], strategy: str = "all") -> tu
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="韭韭量化 jojo选股")
+    parser = argparse.ArgumentParser(description="韭韭量化 jojo screener")
     parser.add_argument("--strategy", type=str, default="all", choices=["1", "2", "all"],
                         help="Which strategy to scan: 1, 2, or all (default: all)")
     parser.add_argument("--top", type=int, default=0,
@@ -577,7 +577,7 @@ def main():
     args = parser.parse_args()
 
     strat_desc = {"1": "Strategy 1 only", "2": "Strategy 2 only", "all": "All strategies"}
-    print("=== 韭韭量化 jojo选股 ===")
+    print("=== 韭韭量化 jojo screener ===")
     print(f"Mode: {strat_desc[args.strategy]}")
     print()
 
@@ -590,8 +590,8 @@ def main():
 
     print("[2/6] Detecting market regime (SPX SMA 225)...")
     current_regime, regime_series = get_current_regime()
-    regime_cn = {"bull": "牛市", "bear": "熊市", "unknown": "未知"}
-    print(f"  当前市场环境: {regime_cn.get(current_regime, current_regime)}")
+    regime_cn = {"bull": "Bull", "bear": "Bear", "unknown": "Unknown"}
+    print(f"  Current market regime: {regime_cn.get(current_regime, current_regime)}")
     print()
 
     print("[3/6] Downloading OHLC data...")
@@ -620,10 +620,10 @@ def main():
     # Choose regime-specific columns based on current market
     if current_regime == "bull":
         regime_prefix = "bull_"
-        regime_label = "牛市"
+        regime_label = "Bull"
     else:
         regime_prefix = "bear_"
-        regime_label = "熊市"
+        regime_label = "Bear"
 
     regime_bt_cols = [f"{regime_prefix}trades", f"{regime_prefix}win_rate",
                       f"{regime_prefix}total_pnl", f"{regime_prefix}pf", f"{regime_prefix}max_dd"]
@@ -656,23 +656,23 @@ def main():
     if args.strategy in ("1", "all"):
         print()
         print("=" * 140)
-        print(f"Strategy 1 — 超买动量 (cross above 76 | stop 20% | ATR%≥2.0) | 当前: {regime_label}")
+        print(f"Strategy 1 — Overbought Momentum (cross above 76 | stop 20% | ATR%>=2.0) | Current: {regime_label}")
         print("=" * 140)
         if s1.empty:
             print("  No signals today.")
         else:
-            print(f"  Found {len(s1)} signal(s)，按市值排名:\n")
+            print(f"  Found {len(s1)} signal(s), ranked by market cap:\n")
             _rank_and_display(s1, display_cols1)
 
     if args.strategy in ("2", "all"):
         print()
         print("=" * 140)
-        print(f"Strategy 2 — 超卖反转 (below 28, turning up | stop 20%) | 当前: {regime_label}")
+        print(f"Strategy 2 — Oversold Reversal (below 28, turning up | stop 20%) | Current: {regime_label}")
         print("=" * 140)
         if s2.empty:
             print("  No signals today.")
         else:
-            print(f"  Found {len(s2)} signal(s)，按市值排名:\n")
+            print(f"  Found {len(s2)} signal(s), ranked by market cap:\n")
             _rank_and_display(s2, display_cols2)
 
     print()

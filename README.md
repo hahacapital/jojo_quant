@@ -1,254 +1,264 @@
-# jojo_quant (韭韭量化) - jojo指标选股工具
+# jojo_quant (韭韭量化) — jojo signal screening tool
 
-每日扫描 NASDAQ + NYSE 全部股票和商品期货，基于jojo指标指标的两种策略选股：
+> English README · [中文文档](README.zh.md)
 
-- **策略1 (超买动量)**：上穿 76 买入，回落下穿 68 卖出（ATR%≥2.0 过滤，20%止损）
-- **策略2 (超卖反转)**：下穿 28 后拐头向上买入，上穿 51 或再次下穿 28 卖出（20%止损）
+Daily scan of NASDAQ + NYSE stocks and commodity futures, ranking signals from two strategies built on the **jojo** composite momentum indicator:
 
-## 快速开始
+- **Strategy 1 (Overbought Momentum)** — buy when jojo crosses above 76; sell when it falls below 68 (ATR% ≥ 2.0 filter, 20% stop loss).
+- **Strategy 2 (Oversold Reversal)** — buy when jojo turns up below 28; sell when it crosses above 51 or drops back below 28 (20% stop loss).
+
+## Quick start
 
 ```bash
-# 安装依赖
+# Install dependencies
 pip install -r requirements.txt
 
-# 每日选股
-python screener.py --strategy 1 --top 20   # 策略1
-python screener.py --strategy 2 --top 20   # 策略2
-python screener.py                          # 全部策略
+# Daily scan
+python3 src/screener.py --strategy 1 --top 20   # Strategy 1
+python3 src/screener.py --strategy 2 --top 20   # Strategy 2
+python3 src/screener.py                          # Both strategies
 
-# 历史回测
-python backtest.py TSLA NVDA HOOD --years 3
-python backtest.py --csv your_data.csv --use-tv  # 使用 TradingView 导出数据
+# Historical backtest
+python3 src/backtest.py TSLA NVDA HOOD --years 3
+python3 src/backtest.py --csv your_data.csv --use-tv  # Use a TradingView export
 
-# 生成回测报告
-python generate_report.py
+# Generate the per-stock backtest report
+python3 src/generate_report.py
 
-# 横截面回测（按 9 个 SPX trend × 波动率 regime 排名股票）
-python cross_section.py
-python cross_section.py --strategy 1 --no-push
-python cross_section.py --limit 5 --no-push   # 烟雾测试
+# Cross-section backtest (rank stocks across 9 SPX trend × volatility regimes)
+python3 src/cross_section.py
+python3 src/cross_section.py --strategy 1 --no-push
+python3 src/cross_section.py --limit 5 --no-push   # smoke test
 
-# 基金回测（Top5 组合）
-python fund_backtest.py --strategy 1 --universe sp500+
-python fund_backtest.py --compare --universe sp500+   # 对比4种配置
+# Fund-level backtest (Top-N portfolio)
+python3 src/fund_backtest.py --strategy 1 --universe sp500+
+python3 src/fund_backtest.py --compare --universe sp500+   # 4-way config comparison
 ```
 
-## 项目结构
+> All Python source lives under `src/`. The repo root keeps only `jojo.pine`, the documentation files, and the data / reports / logs directories.
 
-| 文件 | 说明 |
-|------|------|
-| `indicators.py` | jojo指标指标核心计算（纯 pandas / numpy，无需外部 TA 库） |
-| `screener.py` | 全市场扫描（股票+期货），附带整体+当前市场环境回测数据 |
-| `backtest.py` | 历史回测引擎，支持优化版策略（止损+趋势过滤+波动率过滤） |
-| `generate_report.py` | 批量回测报告生成（牛熊市分别统计，推送 GitHub + S3） |
-| `cross_section.py` | 横截面回测：按 9 个 SPX 趋势 × 波动率 regime 排名每股 S1/S2 表现（仅推 GitHub） |
-| `fund_backtest.py` | 基金组合回测（Top5 持仓，滚动PF排名选股，支持熊市减仓/ATR%动态仓位） |
-| `jojo.pine` | TradingView Pine Script v6 版本，与 Python 代码完全一致 |
-| `CLAUDE.md` | OpenClaw skill 配置文件 |
-| `requirements.txt` | Python 依赖 |
+## Project layout
 
-## 扫描输出字段
+| Path | Description |
+|------|-------------|
+| `jojo.pine` | TradingView Pine Script v6 implementation, 1:1 with the Python code (kept at repo root) |
+| `src/indicators.py` | Core jojo computation (pure pandas / numpy, no third-party TA library) |
+| `src/screener.py` | Full-market scanner (stocks + futures), enriches each signal with overall + current-regime backtest stats |
+| `src/backtest.py` | Historical backtest engine, with optimised variants (stop loss + trend filter + volatility filter) |
+| `src/generate_report.py` | Batch backtest report generator (bull/bear regime split, pushes to GitHub + S3) |
+| `src/cross_section.py` | Cross-section backtest: per-stock S1/S2 ranking across 9 SPX trend × vol regimes (GitHub push only) |
+| `src/fund_backtest.py` | Top-N portfolio simulator with rolling-PF ranking, optional bear-market hedge / ATR%-based sizing |
+| `src/data_loader.py` · `src/download_ohlc.py` | Local OHLC parquet cache (one file per ticker) |
+| `src/test_logic.py` | The project's only test entry point (assert-based, no pytest configuration) |
+| `data/` · `reports/` · `logs/` | Cache, generated reports, run logs (all gitignored) |
+| `CLAUDE.md` · `README.md` · `README.zh.md` | Documentation (English + Chinese) |
+| `requirements.txt` | Python dependencies |
 
-每个信号包含：基本信息（ticker, 英文名, 中文名, 行业, 市值, 收盘价, jojo指标值）+ 整体历史回测（交易次数, 胜率, 累计收益, 盈亏比, 最大回撤）+ **当前市场环境回测**（根据 SPX vs SMA225 自动判断牛/熊市，只展示对应环境的历史数据）。
+## Scanner output fields
 
-## 过滤规则
+Each signal includes: basic info (ticker, English name, Chinese name, industry, market cap, last close, jojo value), full-history backtest metrics (trades, win rate, total PnL, profit factor, max drawdown), and **current-regime backtest metrics** — SPX vs SMA(225) determines bull/bear, and only the matching regime's stats are shown.
 
-- 股票：市值 ≥ 1B USD，排除 ETF
-- 商品期货：不做市值过滤
+## Filters
 
-## 覆盖范围
+- Stocks: market cap ≥ 1B USD, ETFs excluded.
+- Commodity futures: no market-cap filter.
 
-- **股票**: NASDAQ + NYSE 全部（约 6000+）
-- **商品期货**: 黄金(GC=F), 白银(SI=F), 原油(CL=F), 天然气(NG=F), 铜(HG=F), 铂金(PL=F)
+## Coverage
 
-## 基金回测 (fund_backtest)
+- **Stocks:** every NASDAQ + NYSE listing (~6000+).
+- **Commodity futures:** Gold (`GC=F`), Silver (`SI=F`), Crude Oil (`CL=F`), Natural Gas (`NG=F`), Copper (`HG=F`), Platinum (`PL=F`).
 
-模拟一个 Top-N 持仓基金组合，每日扫描 jojo 买入/卖出信号，自动选股、开仓、止损。
+## Fund backtest (`fund_backtest`)
 
-### 核心功能
+Simulates a Top-N portfolio fund that scans daily for jojo buy/sell signals and manages positions automatically (entries, exits, stop loss).
 
-1. **多种排名方式**：市值最大/中间/最小、jojo 指标值、滚动 Profit Factor
-2. **历史 S&P 500 成分股**：从 Wikipedia 变更表重建当时的成分股，消除幸存者偏差
-3. **SPX 基准对比**：自动计算超额收益(α)、月度热力图、回撤分析
-4. **可选配置**：熊市减仓、ATR% 动态仓位、止损比例、持仓数量
+### Core features
 
-### 回测结果（历史成分股，无幸存者偏差）
+1. **Multiple ranking methods** — largest / mid / smallest market cap, jojo value, rolling profit factor.
+2. **Historical S&P 500 membership** — reconstructs constituents from Wikipedia change tables to remove survivorship bias.
+3. **SPX benchmark comparison** — alpha vs SPX, monthly heatmap, drawdown analysis.
+4. **Optional features** — bear-market sizing reduction, ATR%-based dynamic sizing, configurable stop loss and position count.
 
-| 配置 | 年化% | 最大回撤% | Sharpe |
-|------|-------|-----------|--------|
-| Top10 市值最大 | +7.3 | 25.3 | 0.55 |
-| Top10 市值中间 | +1.8 | 34.9 | 0.19 |
-| Top10 市值最小 | +0.3 | 38.9 | 0.10 |
-| SPX 基准 | +10.8 | 33.9 | 0.66 |
+### Backtest results (historical constituents, no survivorship bias)
 
-> **注意**：使用当前成分股回测会因幸存者偏差严重高估小盘股收益（Top1 市值最小从 +38.5% 降至 -13.7%）。务必使用 `--historical` 标志。
+| Configuration | Annual % | Max DD % | Sharpe |
+|---------------|---------:|---------:|-------:|
+| Top 10 by largest market cap | +7.3 | 25.3 | 0.55 |
+| Top 10 by mid market cap | +1.8 | 34.9 | 0.19 |
+| Top 10 by smallest market cap | +0.3 | 38.9 | 0.10 |
+| SPX benchmark | +10.8 | 33.9 | 0.66 |
+
+> **Note:** running with current constituents inflates small-cap returns dramatically due to survivorship bias (Top 1 smallest market cap drops from +38.5% to -13.7% once you switch). Always pass `--historical`.
 
 ```bash
-# 排名方式 × TopN 对比（推荐加 --historical）
-python fund_backtest.py --rank-compare --universe sp500+ --historical
+# Compare ranking method × Top-N (recommended with --historical)
+python3 src/fund_backtest.py --rank-compare --universe sp500+ --historical
 
-# 4 种配置对比（基线/熊市减仓/ATR%动态仓位/全部叠加）
-python fund_backtest.py --compare --universe sp500+
+# 4-way comparison (baseline / bear hedge / ATR sizing / both stacked)
+python3 src/fund_backtest.py --compare --universe sp500+
 
-# 单独运行
-python fund_backtest.py --strategy 1 --universe sp500+ --max-positions 10 --rank-method mktcap --historical
+# Single configuration
+python3 src/fund_backtest.py --strategy 1 --universe sp500+ --max-positions 10 --rank-method mktcap --historical
 ```
 
-## 横截面回测 (cross_section.py)
+## Cross-section backtest (`cross_section.py`)
 
-跨股票回测 jojo Strategy 1 / 2，按 9 个市场环境（SPX 趋势 × 波动率分位）统计每只股票在每个环境下的表现，找出"哪些股票最适合哪种策略 + 哪种市况"。
+Cross-stock backtest of jojo Strategy 1 / 2 across 9 market regimes (SPX trend × volatility quantile), surfacing **which stocks fit which strategy under which regime**.
 
 ```bash
-# 全策略 + 推送 GitHub（默认）
-python3 cross_section.py
+# All strategies, push to GitHub (default)
+python3 src/cross_section.py
 
-# 仅 Strategy 1，本地运行不推送
-python3 cross_section.py --strategy 1 --no-push
+# Strategy 1 only, no push
+python3 src/cross_section.py --strategy 1 --no-push
 
-# 调阈值
-python3 cross_section.py --top 50 --min-trades 10
+# Tune thresholds
+python3 src/cross_section.py --top 50 --min-trades 10
 
-# 烟雾测试（前 5 只标的）
-python3 cross_section.py --limit 5 --no-push
+# Smoke test (first 5 tickers)
+python3 src/cross_section.py --limit 5 --no-push
 ```
 
-输出:
-- `reports/cross_section_<日期>.md` — 每个 regime × 策略 top-N 表格
-- `reports/cross_section_<日期>.csv` — 完整聚合数据
+Outputs:
 
-注意:
-- 依赖本地 OHLC 缓存（先跑 `python3 download_ohlc.py --init` 生成）
-- 首次运行会从 Wikipedia 抓 Russell 1000 + S&P 500 成分到 `data/index_members.json`
-- 仅推 GitHub，不推 S3
+- `reports/cross_section_<date>.md` — top-N table per regime × strategy.
+- `reports/cross_section_<date>.csv` — full per-(ticker, strategy, regime) aggregate.
 
-## jojo指标指标详解
+Notes:
 
-jojo指标是一个**复合动量震荡指标**，将 6 个子指标归一化到 0–100 后加权合成，再用 EMA 平滑。最终输出值在 0–100 之间：
+- Requires the local OHLC cache; build it first with `python3 src/download_ohlc.py --init`.
+- The first run scrapes Russell 1000 + S&P 500 membership from Wikipedia into `data/index_members.json`.
+- GitHub push only (no S3).
 
-- **> 76**：超买区域（策略1买入线）
-- **68**：策略1卖出线
-- **51**：中线（策略2卖出线）
-- **< 28**：超卖区域（策略2买入区）
+## jojo indicator deep dive
 
-### 计算公式
+jojo is a **composite momentum oscillator** that normalises six sub-indicators to the 0–100 range, blends them with fixed weights, and EMA-smooths the result. The final value sits in 0–100:
+
+- **> 76** — overbought zone (Strategy 1 buy line).
+- **68** — Strategy 1 sell line.
+- **51** — midline (Strategy 2 sell line).
+- **< 28** — oversold zone (Strategy 2 buy zone).
+
+### Formula
 
 ```
 index_raw = RSI × 0.1 + WR × 0.2 + CMO × 0.1 + KD × 0.3 + TSI × 0.2 + ADXRSI × 0.1
-jojo指标 = EMA(index_raw, 3)
+jojo      = EMA(index_raw, 3)
 ```
 
-### 6 个子指标
+### The six sub-indicators
 
-#### 1. RSI — 相对强弱指数 (Relative Strength Index)
+#### 1. RSI — Relative Strength Index
 
-- **权重**：10%
-- **参数**：`length = 14`
-- **范围**：0 – 100
-- **含义**：衡量近期涨幅与跌幅的相对强度。RSI > 70 通常视为超买，< 30 视为超卖。
-- **公式**：
+- **Weight:** 10%
+- **Parameter:** `length = 14`
+- **Range:** 0–100
+- **Meaning:** measures the relative strength of recent gains vs losses. RSI > 70 is conventionally overbought; < 30 is oversold.
+- **Formula:**
   ```
-  RS = RMA(涨幅, 14) / RMA(跌幅, 14)
+  RS  = RMA(gains, 14) / RMA(losses, 14)
   RSI = 100 - 100 / (1 + RS)
   ```
-  其中 RMA 是 Wilder 平滑（指数移动平均的变体，alpha = 1/length）。
+  RMA is Wilder's smoothing (an EMA variant with `alpha = 1/length`).
 
-#### 2. WR — 威廉指标 (Williams %R)
+#### 2. WR — Williams %R
 
-- **权重**：20%
-- **参数**：`length = 14`
-- **原始范围**：-100 – 0（标准 Williams %R）
-- **归一化**：加 100 后变为 0 – 100
-- **含义**：衡量收盘价在近期最高价和最低价之间的位置。值越高表示越接近区间顶部（偏强）。
-- **公式**：
+- **Weight:** 20%
+- **Parameter:** `length = 14`
+- **Raw range:** -100–0 (standard Williams %R)
+- **Normalised:** add 100 to map onto 0–100.
+- **Meaning:** measures where the close sits inside the recent high/low range. Higher = closer to the top of the range (stronger).
+- **Formula:**
   ```
-  WR = -100 × (最高价 - 收盘价) / (最高价 - 最低价) + 100
+  WR = -100 × (highest - close) / (highest - lowest) + 100
   ```
-  其中最高价/最低价取过去 14 根 K 线的滚动最大/最小值。
+  where `highest` / `lowest` are the rolling 14-bar extrema.
 
-> **注意**：归一化后 WR 与 Stochastic %K 的公式完全相同：`100 × (close - lowest) / (highest - lowest)`。
+> **Note:** after normalisation, WR is identical to Stochastic %K: `100 × (close - lowest) / (highest - lowest)`.
 
-#### 3. CMO — 钱德动量震荡指标 (Chande Momentum Oscillator)
+#### 3. CMO — Chande Momentum Oscillator
 
-- **权重**：10%
-- **参数**：`length = 14`
-- **原始范围**：-100 – 100
-- **归一化**：`(CMO + 100) / 2` 变为 0 – 100
-- **含义**：类似 RSI，但直接用涨跌幅度差值与总量的比率，对动量变化更敏感。
-- **公式**：
+- **Weight:** 10%
+- **Parameter:** `length = 14`
+- **Raw range:** -100–100
+- **Normalised:** `(CMO + 100) / 2` maps to 0–100.
+- **Meaning:** similar to RSI, but directly uses the difference between gain and loss totals over the same window — more sensitive to momentum shifts.
+- **Formula:**
   ```
-  sum_gain = SUM(涨幅, 14)
-  sum_loss = SUM(跌幅, 14)
-  CMO = 100 × (sum_gain - sum_loss) / (sum_gain + sum_loss)
-  归一化 = (CMO + 100) / 2
-  ```
-
-#### 4. KD — 随机指标 %K (Stochastic %K)
-
-- **权重**：30%（最高权重）
-- **参数**：`length = 14`
-- **范围**：0 – 100
-- **含义**：衡量收盘价在近期价格通道中的相对位置。%K > 80 表示接近通道顶部（强势），< 20 表示接近底部（弱势）。这是jojo指标中权重最大的子指标，对短期价格位置变化最敏感。
-- **公式**：
-  ```
-  %K = 100 × (收盘价 - 14日最低价) / (14日最高价 - 14日最低价)
+  sum_gain = SUM(gains, 14)
+  sum_loss = SUM(losses, 14)
+  CMO      = 100 × (sum_gain - sum_loss) / (sum_gain + sum_loss)
+  norm     = (CMO + 100) / 2
   ```
 
-#### 5. TSI — 真实强度指数 (True Strength Index)
+#### 4. KD — Stochastic %K
 
-- **权重**：20%
-- **参数**：`short_length = 7, long_length = 14`
-- **原始范围**：-1 – 1（Pine Script 的 `ta.tsi()` 返回值）
-- **归一化**：`(TSI + 1) / 2 × 100` 变为 0 – 100
-- **含义**：双重 EMA 平滑的动量指标，比 RSI 更平滑，能更好地反映趋势方向和强度，同时过滤掉短期噪音。
-- **公式**：
+- **Weight:** 30% (highest weight)
+- **Parameter:** `length = 14`
+- **Range:** 0–100
+- **Meaning:** position of the close inside the recent price channel. %K > 80 ≈ near the channel top (strong); < 20 ≈ near the bottom (weak). This is the highest-weighted sub-indicator and is the most sensitive to short-term price location changes.
+- **Formula:**
   ```
-  diff = close - close[1]                      # 每日价格变动
-  double_smooth    = EMA(EMA(diff, 14), 7)     # 变动的双重平滑
-  abs_double_smooth = EMA(EMA(|diff|, 14), 7)  # 绝对变动的双重平滑
-  TSI_raw = double_smooth / abs_double_smooth   # [-1, 1]
-  TSI = (TSI_raw + 1) / 2 × 100                # [0, 100]
+  %K = 100 × (close - lowest_14) / (highest_14 - lowest_14)
   ```
 
-#### 6. ADXRSI — ADX 的 RSI（方向性过滤器）
+#### 5. TSI — True Strength Index
 
-- **权重**：10%
-- **参数**：`DI length = 14, ADX smoothing = 18, RSI length = 14`
-- **范围**：0 – 100
-- **含义**：先计算 ADX（平均趋向指数，衡量趋势强度），再对 ADX 取 RSI，最后根据 K 线方向（阳线/阴线）调整符号。这使得jojo指标能区分上涨趋势和下跌趋势中的 ADX 强度。
-- **公式**：
+- **Weight:** 20%
+- **Parameters:** `short_length = 7, long_length = 14`
+- **Raw range:** -1–1 (Pine Script's `ta.tsi()` output)
+- **Normalised:** `(TSI + 1) / 2 × 100` maps to 0–100.
+- **Meaning:** double-EMA-smoothed momentum; smoother than RSI, captures trend direction and strength while filtering short-term noise.
+- **Formula:**
   ```
-  # 1. DMI (方向运动指标)
-  +DM = max(high - high[1], 0)  当 high变动 > low变动 时
-  -DM = max(low[1] - low, 0)    当 low变动 > high变动 时
-  ATR = RMA(TrueRange, 14)
-  +DI = 100 × RMA(+DM, 14) / ATR
-  -DI = 100 × RMA(-DM, 14) / ATR
+  diff              = close - close[1]                # daily price change
+  double_smooth     = EMA(EMA(diff, 14), 7)           # double-smoothed change
+  abs_double_smooth = EMA(EMA(|diff|, 14), 7)         # double-smoothed |change|
+  TSI_raw           = double_smooth / abs_double_smooth   # [-1, 1]
+  TSI               = (TSI_raw + 1) / 2 × 100             # [0, 100]
+  ```
 
-  # 2. ADX (平均趋向指数)
-  DX  = 100 × |+DI - -DI| / (+DI + -DI)
-  ADX = RMA(DX, 18)
+#### 6. ADXRSI — RSI of ADX (directional filter)
 
-  # 3. ADXRSI (方向性调整)
-  sign = +1（阳线）或 -1（阴线）
+- **Weight:** 10%
+- **Parameters:** `DI length = 14, ADX smoothing = 18, RSI length = 14`
+- **Range:** 0–100
+- **Meaning:** computes ADX (average directional index — trend strength), then RSI of ADX, then signs the result by candle direction (up vs down bar). This lets jojo distinguish ADX strength inside up-trends from down-trends.
+- **Formula:**
+  ```
+  # 1. DMI (directional movement index)
+  +DM  = max(high - high[1], 0)   if high move > low move
+  -DM  = max(low[1] - low, 0)     if low move > high move
+  ATR  = RMA(TrueRange, 14)
+  +DI  = 100 × RMA(+DM, 14) / ATR
+  -DI  = 100 × RMA(-DM, 14) / ATR
+
+  # 2. ADX (average directional index)
+  DX   = 100 × |+DI - -DI| / (+DI + -DI)
+  ADX  = RMA(DX, 18)
+
+  # 3. ADXRSI (directional adjustment)
+  sign   = +1 (up bar) or -1 (down bar)
   ADXRSI = (RSI(ADX, 14) × sign + 100) / 2
   ```
 
-### 平滑方法
+### Smoothing
 
-jojo指标中使用了两种平滑方法，均与 TradingView 的实现完全一致：
+jojo uses two smoothing methods, both matching TradingView exactly:
 
-| 方法 | 公式 | 用途 |
-|------|------|------|
-| **RMA (Wilder 平滑)** | `rma[i] = val × (1/n) + rma[i-1] × (1 - 1/n)` | RSI 内部的涨跌幅平滑、ATR、DI、ADX |
-| **EMA (指数移动平均)** | `ema[i] = val × (2/(n+1)) + ema[i-1] × (1 - 2/(n+1))` | TSI 内部的双重平滑、最终 index 的 EMA(3) |
+| Method | Formula | Used in |
+|--------|---------|---------|
+| **RMA (Wilder smoothing)** | `rma[i] = val × (1/n) + rma[i-1] × (1 - 1/n)` | RSI gain/loss smoothing, ATR, DI, ADX |
+| **EMA (exponential moving average)** | `ema[i] = val × (2/(n+1)) + ema[i-1] × (1 - 2/(n+1))` | TSI's double smoothing, final EMA(3) |
 
-两者均以前 N 个值的 **SMA（简单平均）** 作为种子值初始化，这是匹配 TradingView 计算结果的关键。
+Both are seeded with the **simple mean** of the first `n` values — that seeding is the key to matching TradingView's results.
 
-## 依赖
+## Dependencies
 
-- **yfinance** — 从 Yahoo Finance 批量下载 OHLC 数据
-- **pandas** — 数据处理与时间序列操作
-- **numpy** — 数值计算
-- **requests** — 从 NASDAQ 网站获取股票列表
+- **yfinance** — bulk OHLC download from Yahoo Finance.
+- **pandas** — data manipulation and time-series ops.
+- **numpy** — numerical primitives.
+- **requests** — pulls the NASDAQ-listed ticker file.
+- **lxml** — backend for Wikipedia table parsing via `pd.read_html`.
 
-> 无需 `pandas_ta` 或其他技术分析库，所有指标均从头实现。
+> No `pandas_ta` or other TA libraries — every indicator is implemented from scratch.

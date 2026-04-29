@@ -466,7 +466,7 @@ def render_markdown(main_rank: pd.DataFrame, perfect: pd.DataFrame,
             parts.append(f"| {r} | {int(counts[r])} |")
 
     for strategy in strategies:
-        nice = "超买动量" if strategy == "S1" else "超卖反转"
+        nice = "Overbought Momentum" if strategy == "S1" else "Oversold Reversal"
         parts.append(f"\n## Strategy {strategy[1]} — {nice}\n")
         s_main = main_rank[main_rank["strategy"] == strategy]
         s_perf = perfect[perfect["strategy"] == strategy]
