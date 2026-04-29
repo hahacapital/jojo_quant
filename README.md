@@ -67,6 +67,8 @@ Each signal includes: basic info (ticker, English name, Chinese name, industry, 
 
 Cross-stock backtest of jojo Strategy 1 / 2 across 9 market regimes (SPX trend × volatility quantile), surfacing **which stocks fit which strategy under which regime**.
 
+**Latest report:** [reports/cross_section_2026-04-29.md](reports/cross_section_2026-04-29.md) · all archives in [reports/](reports/).
+
 ```bash
 # All strategies, push to GitHub (default)
 python3 src/cross_section.py

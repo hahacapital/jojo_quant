@@ -67,6 +67,8 @@ python3 src/cross_section.py --limit 5 --no-push   # 烟雾测试
 
 跨股票回测 jojo Strategy 1 / 2，按 9 个市场环境（SPX 趋势 × 波动率分位）统计每只股票在每个环境下的表现，找出"哪些股票最适合哪种策略 + 哪种市况"。
 
+**最新报表**：[reports/cross_section_2026-04-29.md](reports/cross_section_2026-04-29.md) · 历史归档见 [reports/](reports/)。
+
 ```bash
 # 全策略 + 推送 GitHub（默认）
 python3 src/cross_section.py
