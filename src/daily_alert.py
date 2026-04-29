@@ -114,6 +114,32 @@ def load_latest_cross_section_csv() -> tuple[pd.DataFrame, str]:
     return df, latest.stem
 
 
+def filter_top30(csv_df: pd.DataFrame, *, strategy: str, regime: str,
+                 n: int = TOP_N_DEFAULT,
+                 min_trades: int = MIN_TRADES_DEFAULT) -> set[str]:
+    """Return the set of tickers ranked in the top-N of (strategy, regime).
+
+    Filters:
+      - row.strategy == strategy AND row.regime == regime
+      - trades >= min_trades
+      - pf finite (rows where pf == 'inf' belong to the perfect-record
+        listing, not the main rank — exclude them here to match the
+        cross-section markdown report's behaviour)
+
+    Sort key: score desc, total_pnl desc, win_rate desc.
+    """
+    sub = csv_df[(csv_df["strategy"] == strategy) & (csv_df["regime"] == regime)]
+    sub = sub[sub["trades"] >= min_trades]
+    sub = sub[sub["pf"].apply(lambda v: not (isinstance(v, str) and v == "inf"))]
+    if sub.empty:
+        return set()
+    sub = sub.copy()
+    sub["pf_num"] = pd.to_numeric(sub["pf"], errors="coerce")
+    sub = sub.sort_values(["score", "total_pnl", "win_rate"],
+                          ascending=[False, False, False])
+    return set(sub.head(n)["ticker"].astype(str).tolist())
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",

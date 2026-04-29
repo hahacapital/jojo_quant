@@ -602,6 +602,41 @@ def test_load_latest_cross_section_csv_picks_newest():
 
 
 # ============================================================
+# Test: filter_top30 excludes low-trades and inf-pf rows
+# ============================================================
+def test_filter_top30_excludes_low_trades_and_inf_pf():
+    """trades < min_trades and pf == 'inf' rows are excluded; sort by score desc."""
+    import daily_alert
+    csv_df = pd.DataFrame([
+        {"ticker": "GOOD", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 10, "win_rate": 60.0, "total_pnl": 50.0, "avg_pnl": 5.0,
+         "pf": 2.5, "max_dd": 5.0, "avg_holding": 8.0, "score": 7.9},
+        {"ticker": "BEST", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 20, "win_rate": 70.0, "total_pnl": 200.0, "avg_pnl": 10.0,
+         "pf": 4.0, "max_dd": 5.0, "avg_holding": 7.0, "score": 17.9},
+        {"ticker": "LOW", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 3, "win_rate": 100.0, "total_pnl": 30.0, "avg_pnl": 10.0,
+         "pf": 5.0, "max_dd": 0.0, "avg_holding": 5.0, "score": 8.66},
+        {"ticker": "PERF", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 8, "win_rate": 100.0, "total_pnl": 80.0, "avg_pnl": 10.0,
+         "pf": "inf", "max_dd": 0.0, "avg_holding": 5.0, "score": "inf"},
+        {"ticker": "OTHR", "strategy": "S2", "regime": "bull_low_vol",
+         "trades": 30, "win_rate": 65.0, "total_pnl": 100.0, "avg_pnl": 3.3,
+         "pf": 3.0, "max_dd": 5.0, "avg_holding": 6.0, "score": 16.4},
+    ])
+    keep = daily_alert.filter_top30(csv_df, strategy="S1",
+                                    regime="bull_low_vol", n=30)
+    assert keep == {"GOOD", "BEST"}, f"got {keep}"
+
+    # Top-1 cap
+    keep1 = daily_alert.filter_top30(csv_df, strategy="S1",
+                                     regime="bull_low_vol", n=1)
+    assert keep1 == {"BEST"}, f"top1 should be BEST, got {keep1}"
+
+    print("  PASS: filter_top30 excludes low-trades + inf pf, sorts by score")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -628,6 +663,7 @@ if __name__ == "__main__":
         ("rank filters + splits", test_rank_filters_and_splits),
         ("daily_alert load_env", test_load_env_reads_dotenv),
         ("daily_alert load_latest_csv", test_load_latest_cross_section_csv_picks_newest),
+        ("daily_alert filter_top30", test_filter_top30_excludes_low_trades_and_inf_pf),
     ]
 
     passed = 0
