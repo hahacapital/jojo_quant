@@ -242,6 +242,37 @@ def fetch_company_info(ticker: str) -> dict:
     return {"name": ticker, "sector": "", "industry": "", "description": ""}
 
 
+# ---------------------------------------------------------------------------
+# MarkdownV2 helpers
+# ---------------------------------------------------------------------------
+
+_MD_SPECIAL = r"_*[]()~`>#+-=|{}.!\\"
+
+
+def _md_escape(s) -> str:
+    """Backslash-escape Telegram MarkdownV2 specials in `s`."""
+    text = "" if s is None else str(s)
+    return "".join("\\" + c if c in _MD_SPECIAL else c for c in text)
+
+
+def _describe_regime(regime: str) -> str:
+    """Plain-language Chinese description of a regime label."""
+    parts = regime.split("_")
+    trend = parts[0]
+    vol = "_".join(parts[1:]) if len(parts) > 1 else ""
+    trend_cn = {
+        "bull": "多头趋势",
+        "bear": "空头趋势",
+        "neutral": "趋势中性",
+    }.get(trend, trend)
+    vol_cn = {
+        "low_vol": "波动率低",
+        "mid_vol": "波动率中等",
+        "high_vol": "波动率高",
+    }.get(vol, vol)
+    return f"(SPX 处于{trend_cn}, {vol_cn})"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",

@@ -674,6 +674,21 @@ def test_check_spx_fresh_aborts_when_stale():
 
 
 # ============================================================
+# Test: _md_escape covers all Telegram MarkdownV2 specials
+# ============================================================
+def test_md_escape_special_chars():
+    """_md_escape escapes every Telegram MarkdownV2 special character."""
+    import daily_alert
+    s = "BRK.B (test) +1 -bar_value!"
+    out = daily_alert._md_escape(s)
+    for c in "._()+!-":
+        assert "\\" + c in out, f"missing escape for {c!r} in {out!r}"
+    for c in "BRK Btest1bar":
+        assert c in out, f"plain char {c!r} should pass through"
+    print(f"  PASS: _md_escape produced {out!r}")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -703,6 +718,7 @@ if __name__ == "__main__":
         ("daily_alert filter_top30", test_filter_top30_excludes_low_trades_and_inf_pf),
         ("daily_alert expected_last_us_trading_day", test_expected_last_us_trading_day_returns_business_day),
         ("daily_alert check_spx_fresh stale", test_check_spx_fresh_aborts_when_stale),
+        ("daily_alert _md_escape", test_md_escape_special_chars),
     ]
 
     passed = 0
