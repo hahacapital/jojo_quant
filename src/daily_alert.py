@@ -357,6 +357,59 @@ def format_message(s1_alerts: list[dict], s2_alerts: list[dict],
     return "\n".join(lines).rstrip() + "\n"
 
 
+# ---------------------------------------------------------------------------
+# Telegram delivery
+# ---------------------------------------------------------------------------
+
+def send_telegram(token: str, chat_id: str, text: str, *,
+                  retries: int = 1, parse_mode: str = "MarkdownV2") -> None:
+    """POST to Telegram Bot API. Retries once on 5xx / network errors.
+
+    Raises RuntimeError on permanent failure (non-200 final attempt).
+    """
+    url = TELEGRAM_API.format(token=token)
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode}
+
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.post(url, json=payload, timeout=15)
+        except requests.RequestException as e:
+            if attempt < retries:
+                time.sleep(2)
+                continue
+            raise RuntimeError(f"Telegram network error: {e}") from e
+
+        if resp.status_code == 200:
+            return
+        if resp.status_code >= 500 and attempt < retries:
+            time.sleep(2)
+            continue
+        raise RuntimeError(
+            f"Telegram send failed {resp.status_code}: {resp.text[:300]}"
+        )
+
+
+def send_chunked(token: str, chat_id: str, text: str,
+                 *, max_len: int = TELEGRAM_MAX_LEN) -> None:
+    """Split `text` along newline boundaries and send each chunk."""
+    if len(text) <= max_len:
+        send_telegram(token, chat_id, text)
+        return
+    chunks: list[str] = []
+    cur = ""
+    for line in text.split("\n"):
+        candidate = (cur + "\n" + line) if cur else line
+        if len(candidate) > max_len and cur:
+            chunks.append(cur)
+            cur = line
+        else:
+            cur = candidate
+    if cur:
+        chunks.append(cur)
+    for c in chunks:
+        send_telegram(token, chat_id, c)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",
