@@ -10,6 +10,28 @@ Effective period: 2008-01-02 → 2026-04-28
 *Note*: Universe drawn from current Russell 1000 + S&P 500 membership snapshot, intersected with the local OHLC cache. Survivorship bias is acknowledged; delisted names are not in this table.
 
 
+## Regime definitions
+
+Each regime is `<trend>_<vol>` — combination of an SPX **trend state** and a **volatility bucket**. All inputs are computed using only data on or before each date (no look-ahead).
+
+
+### Trend state (3 levels)
+
+- **bull**    — SPX close ≥ SMA225 AND SMA50 ≥ SMA200
+- **bear**    — SPX close < SMA225 AND SMA50 < SMA200
+- **neutral** — mixed signals (price and 50/200 cross disagree)
+
+### Volatility bucket (3 levels)
+
+30-day realized log-return vol of SPX, annualized × √252, then ranked over a 5-year **rolling** window (percentile rank).
+
+- **low_vol**  — rolling rank ≤ 33%
+- **mid_vol**  — 33% < rolling rank ≤ 67%
+- **high_vol** — rolling rank > 67%
+
+**warmup**: rows where SPX history is too short for the longest window (SMA225 or 5-year vol rank). Trades whose entry-date falls in warmup are dropped from the analysis.
+
+
 ## Regime time distribution (trading days)
 
 | regime | days |

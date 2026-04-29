@@ -429,6 +429,35 @@ def render_markdown(main_rank: pd.DataFrame, perfect: pd.DataFrame,
                  "Survivorship bias is acknowledged; delisted names are not in this "
                  "table.\n")
 
+    parts.append("\n## Regime definitions\n")
+    parts.append(
+        "Each regime is `<trend>_<vol>` — combination of an SPX **trend state** "
+        "and a **volatility bucket**. All inputs are computed using only data "
+        "on or before each date (no look-ahead).\n"
+    )
+    parts.append("\n### Trend state (3 levels)\n")
+    parts.append(
+        f"- **bull**    — SPX close ≥ SMA{TREND_SMA_REGIME} AND "
+        f"SMA{TREND_SMA_FAST} ≥ SMA{TREND_SMA_SLOW}\n"
+        f"- **bear**    — SPX close < SMA{TREND_SMA_REGIME} AND "
+        f"SMA{TREND_SMA_FAST} < SMA{TREND_SMA_SLOW}\n"
+        f"- **neutral** — mixed signals (price and 50/200 cross disagree)"
+    )
+    parts.append("\n### Volatility bucket (3 levels)\n")
+    parts.append(
+        f"30-day realized log-return vol of SPX, annualized × √252, "
+        f"then ranked over a {VOL_RANK_WINDOW // 252}-year **rolling** window "
+        f"(percentile rank).\n\n"
+        f"- **low_vol**  — rolling rank ≤ {int(VOL_LOW_Q * 100)}%\n"
+        f"- **mid_vol**  — {int(VOL_LOW_Q * 100)}% < rolling rank ≤ {int(VOL_HIGH_Q * 100)}%\n"
+        f"- **high_vol** — rolling rank > {int(VOL_HIGH_Q * 100)}%"
+    )
+    parts.append(
+        f"\n**warmup**: rows where SPX history is too short for the longest "
+        f"window (SMA{TREND_SMA_REGIME} or {VOL_RANK_WINDOW // 252}-year vol "
+        f"rank). Trades whose entry-date falls in warmup are dropped from the "
+        f"analysis.\n"
+    )
     parts.append("\n## Regime time distribution (trading days)\n")
     counts = regimes["regime"].value_counts()
     parts.append("| regime | days |\n|--------|------|")
