@@ -273,6 +273,90 @@ def _describe_regime(regime: str) -> str:
     return f"(SPX 处于{trend_cn}, {vol_cn})"
 
 
+# ---------------------------------------------------------------------------
+# Message rendering
+# ---------------------------------------------------------------------------
+
+def _format_alert(a: dict, *, strategy: str) -> list[str]:
+    """Return the lines (already MarkdownV2-escaped) for one alert entry."""
+    parts: list[str] = []
+    parts.append(f"*{_md_escape(a['ticker'])}* — {_md_escape(a['name'])}")
+    if a.get("sector") or a.get("industry"):
+        parts.append(
+            f"板块: {_md_escape(a.get('sector', ''))} / "
+            f"{_md_escape(a.get('industry', ''))}"
+        )
+    if a.get("description"):
+        parts.append(_md_escape(a["description"]))
+
+    # Pre-escape numeric fields into plain locals so we never nest f-strings
+    # with conflicting quote characters (Python 3.9 forbids that).
+    jojo_str = _md_escape(f"{a['jojo']:.1f}")
+    prev_str = _md_escape(f"{a['prev']:.1f}")
+    if strategy == "S1":
+        atr_str = _md_escape(f"{a['atr_pct']:.1f}")
+        parts.append(
+            f"今日 jojo 上穿 76 \\(今 {jojo_str} / 昨 {prev_str}\\), "
+            f"ATR {atr_str}%\\."
+        )
+    else:  # S2
+        low_str = _md_escape(f"{a['recent_low']:.1f}")
+        parts.append(
+            f"今日 jojo 在 28 以下拐头 \\(今 {jojo_str} / 昨 {prev_str}\\), "
+            f"20 日低 {low_str}\\."
+        )
+
+    bt_pf = a["bt_pf"]
+    if isinstance(bt_pf, float) and bt_pf == float("inf"):
+        pf_str = "inf"
+    else:
+        pf_str = f"{float(bt_pf):.2f}"
+    pf_esc = _md_escape(pf_str)
+    win_str = _md_escape(f"{a['bt_win_rate']:.1f}")
+    pnl_str = _md_escape(f"{a['bt_total_pnl']:+.1f}")
+    hold_str = _md_escape(f"{a['bt_avg_holding']:.1f}")
+    parts.append(
+        f"历史 `{_md_escape(a['regime'])}` 表现: "
+        f"{int(a['bt_trades'])} 笔, 胜率 {win_str}%, "
+        f"总收益 {pnl_str}%, "
+        f"PF {pf_esc}, 平均持仓 {hold_str} 天\\."
+    )
+    return parts
+
+
+def format_message(s1_alerts: list[dict], s2_alerts: list[dict],
+                   regime: str, date_str: str) -> str:
+    """Build the full Chinese MarkdownV2 message. Returns '' if no alerts."""
+    if not s1_alerts and not s2_alerts:
+        return ""
+    lines: list[str] = []
+    lines.append(f"🔔 *jojo 信号提醒* — {_md_escape(date_str)}")
+    lines.append("")
+    lines.append(f"📊 *当前市场环境*: `{_md_escape(regime)}`")
+    lines.append(f"   {_md_escape(_describe_regime(regime))}")
+    lines.append("")
+
+    if s1_alerts:
+        lines.append("═══════════════════")
+        lines.append("🚀 *策略 1 \\(超买动量\\) 信号*")
+        lines.append("═══════════════════")
+        lines.append("")
+        for a in s1_alerts:
+            lines.extend(_format_alert(a, strategy="S1"))
+            lines.append("")
+
+    if s2_alerts:
+        lines.append("═══════════════════")
+        lines.append("🔄 *策略 2 \\(超卖反转\\) 信号*")
+        lines.append("═══════════════════")
+        lines.append("")
+        for a in s2_alerts:
+            lines.extend(_format_alert(a, strategy="S2"))
+            lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",

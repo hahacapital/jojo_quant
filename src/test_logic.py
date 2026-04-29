@@ -689,6 +689,30 @@ def test_md_escape_special_chars():
 
 
 # ============================================================
+# Test: format_message returns '' when no alerts; non-empty otherwise
+# ============================================================
+def test_format_message_empty_and_populated():
+    """format_message: zero alerts → '', has alerts → contains ticker."""
+    import daily_alert
+    assert daily_alert.format_message([], [], "bull_low_vol", "2026-04-29") == ""
+
+    s1 = [{
+        "ticker": "NVDA", "name": "NVIDIA Corp", "sector": "Tech",
+        "industry": "Semis", "description": "GPU maker",
+        "jojo": 78.2, "prev": 75.4, "atr_pct": 4.3,
+        "regime": "bull_low_vol",
+        "bt_trades": 41, "bt_win_rate": 48.8, "bt_total_pnl": 131.1,
+        "bt_pf": 2.88, "bt_avg_holding": 12.8,
+    }]
+    out = daily_alert.format_message(s1, [], "bull_low_vol", "2026-04-29")
+    assert "NVDA" in out
+    assert "策略 1" in out
+    assert "策略 2" not in out  # only S1 alerts
+    assert "*NVDA*" in out
+    print("  PASS: format_message handles empty + populated")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -719,6 +743,7 @@ if __name__ == "__main__":
         ("daily_alert expected_last_us_trading_day", test_expected_last_us_trading_day_returns_business_day),
         ("daily_alert check_spx_fresh stale", test_check_spx_fresh_aborts_when_stale),
         ("daily_alert _md_escape", test_md_escape_special_chars),
+        ("daily_alert format_message", test_format_message_empty_and_populated),
     ]
 
     passed = 0
