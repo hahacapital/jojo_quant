@@ -531,6 +531,199 @@ def test_rank_filters_and_splits():
 
 
 # ============================================================
+# Test: daily_alert.load_env reads from env then .env file
+# ============================================================
+def test_load_env_reads_dotenv():
+    """load_env() prefers process env, falls back to .env file."""
+    import os
+    import tempfile
+    from pathlib import Path
+    import daily_alert
+
+    # Case 1: both from environment
+    os.environ["TELEGRAM_BOT_TOKEN"] = "envtok"
+    os.environ["TELEGRAM_CHAT_ID"] = "envchat"
+    try:
+        token, chat_id = daily_alert.load_env()
+        assert token == "envtok" and chat_id == "envchat"
+    finally:
+        del os.environ["TELEGRAM_BOT_TOKEN"]
+        del os.environ["TELEGRAM_CHAT_ID"]
+
+    # Case 2: env missing, .env file provides them
+    with tempfile.TemporaryDirectory() as td:
+        original = daily_alert.ENV_PATH
+        daily_alert.ENV_PATH = Path(td) / ".env"
+        daily_alert.ENV_PATH.write_text(
+            'TELEGRAM_BOT_TOKEN=filetok\nTELEGRAM_CHAT_ID="filechat"\n'
+        )
+        try:
+            os.environ.pop("TELEGRAM_BOT_TOKEN", None)
+            os.environ.pop("TELEGRAM_CHAT_ID", None)
+            token, chat_id = daily_alert.load_env()
+            assert token == "filetok"
+            assert chat_id == "filechat"
+        finally:
+            daily_alert.ENV_PATH = original
+
+    print("  PASS: load_env reads env then .env")
+
+
+# ============================================================
+# Test: load_latest_cross_section_csv picks newest by filename
+# ============================================================
+def test_load_latest_cross_section_csv_picks_newest():
+    """When multiple cross_section_*.csv exist, the latest filename wins."""
+    import tempfile
+    from pathlib import Path
+    import daily_alert
+
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        original = daily_alert.REPORTS_DIR
+        daily_alert.REPORTS_DIR = d
+        try:
+            (d / "cross_section_2025-12-01.csv").write_text(
+                "ticker,strategy,regime,trades,win_rate,total_pnl,avg_pnl,pf,max_dd,avg_holding,score\n"
+                "AAA,S1,bull_low_vol,10,60,50,5,2.5,5,8,7.9\n"
+            )
+            (d / "cross_section_2026-04-29.csv").write_text(
+                "ticker,strategy,regime,trades,win_rate,total_pnl,avg_pnl,pf,max_dd,avg_holding,score\n"
+                "BBB,S2,bear_high_vol,8,55,30,3.7,2.0,4,7,5.7\n"
+            )
+            df, name = daily_alert.load_latest_cross_section_csv()
+            assert name == "cross_section_2026-04-29"
+            assert "BBB" in df["ticker"].values
+            assert "AAA" not in df["ticker"].values
+        finally:
+            daily_alert.REPORTS_DIR = original
+
+    print("  PASS: load_latest_cross_section_csv picks newest")
+
+
+# ============================================================
+# Test: filter_top30 excludes low-trades and inf-pf rows
+# ============================================================
+def test_filter_top30_excludes_low_trades_and_inf_pf():
+    """trades < min_trades and pf == 'inf' rows are excluded; sort by score desc."""
+    import daily_alert
+    csv_df = pd.DataFrame([
+        {"ticker": "GOOD", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 10, "win_rate": 60.0, "total_pnl": 50.0, "avg_pnl": 5.0,
+         "pf": 2.5, "max_dd": 5.0, "avg_holding": 8.0, "score": 7.9},
+        {"ticker": "BEST", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 20, "win_rate": 70.0, "total_pnl": 200.0, "avg_pnl": 10.0,
+         "pf": 4.0, "max_dd": 5.0, "avg_holding": 7.0, "score": 17.9},
+        {"ticker": "LOW", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 3, "win_rate": 100.0, "total_pnl": 30.0, "avg_pnl": 10.0,
+         "pf": 5.0, "max_dd": 0.0, "avg_holding": 5.0, "score": 8.66},
+        {"ticker": "PERF", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 8, "win_rate": 100.0, "total_pnl": 80.0, "avg_pnl": 10.0,
+         "pf": "inf", "max_dd": 0.0, "avg_holding": 5.0, "score": "inf"},
+        {"ticker": "OTHR", "strategy": "S2", "regime": "bull_low_vol",
+         "trades": 30, "win_rate": 65.0, "total_pnl": 100.0, "avg_pnl": 3.3,
+         "pf": 3.0, "max_dd": 5.0, "avg_holding": 6.0, "score": 16.4},
+    ])
+    keep = daily_alert.filter_top30(csv_df, strategy="S1",
+                                    regime="bull_low_vol", n=30)
+    assert keep == {"GOOD", "BEST"}, f"got {keep}"
+
+    # Top-1 cap
+    keep1 = daily_alert.filter_top30(csv_df, strategy="S1",
+                                     regime="bull_low_vol", n=1)
+    assert keep1 == {"BEST"}, f"top1 should be BEST, got {keep1}"
+
+    print("  PASS: filter_top30 excludes low-trades + inf pf, sorts by score")
+
+
+# ============================================================
+# Test: expected_last_us_trading_day returns a US business day
+# ============================================================
+def test_expected_last_us_trading_day_returns_business_day():
+    """Helper returns a US business day on or before today."""
+    import daily_alert
+    d = daily_alert.expected_last_us_trading_day()
+    today = pd.Timestamp.utcnow().normalize().tz_localize(None)
+    assert d <= today, f"{d} should be <= today ({today})"
+    assert daily_alert.US_BDAY.is_on_offset(d), (
+        f"{d} should land on a US business day"
+    )
+    print(f"  PASS: expected_last_us_trading_day = {d.date()}")
+
+
+# ============================================================
+# Test: check_spx_fresh aborts when last bar is too old
+# ============================================================
+def test_check_spx_fresh_aborts_when_stale():
+    """check_spx_fresh sys.exits when SPX last bar precedes the expected day."""
+    import daily_alert
+
+    stale = pd.DataFrame(
+        {"close": [100.0]},
+        index=pd.DatetimeIndex(
+            [pd.Timestamp.utcnow().normalize().tz_localize(None) - pd.Timedelta(days=30)]
+        ),
+    )
+    try:
+        daily_alert.check_spx_fresh(stale)
+    except SystemExit as e:
+        assert e.code == daily_alert.EXIT_SPX_STALE
+        print("  PASS: check_spx_fresh aborts on stale data")
+        return
+    raise AssertionError("check_spx_fresh did not abort on stale SPX")
+
+
+# ============================================================
+# Test: _md_escape covers all Telegram MarkdownV2 specials
+# ============================================================
+def test_md_escape_special_chars():
+    """_md_escape escapes every Telegram MarkdownV2 special character."""
+    import daily_alert
+    s = "BRK.B (test) +1 -bar_value!"
+    out = daily_alert._md_escape(s)
+    for c in "._()+!-":
+        assert "\\" + c in out, f"missing escape for {c!r} in {out!r}"
+    for c in "BRK Btest1bar":
+        assert c in out, f"plain char {c!r} should pass through"
+    print(f"  PASS: _md_escape produced {out!r}")
+
+
+# ============================================================
+# Test: format_message returns '' when no alerts; non-empty otherwise
+# ============================================================
+def test_format_message_empty_and_populated():
+    """format_message: zero alerts → '', has alerts → contains ticker."""
+    import daily_alert
+    assert daily_alert.format_message([], [], "bull_low_vol", "2026-04-29") == ""
+
+    s1 = [{
+        "ticker": "NVDA", "name": "NVIDIA Corp", "sector": "Tech",
+        "industry": "Semis", "description": "GPU maker",
+        "jojo": 78.2, "prev": 75.4, "atr_pct": 4.3,
+        "regime": "bull_low_vol",
+        "bt_trades": 41, "bt_win_rate": 48.8, "bt_total_pnl": 131.1,
+        "bt_pf": 2.88, "bt_avg_holding": 12.8,
+    }]
+    out = daily_alert.format_message(s1, [], "bull_low_vol", "2026-04-29")
+    assert "NVDA" in out
+    assert "策略 1" in out
+    assert "策略 2" not in out  # only S1 alerts
+    assert "*NVDA*" in out
+    print("  PASS: format_message handles empty + populated")
+
+
+# ============================================================
+# Test: format_message of empty alerts → '' (silent path)
+# ============================================================
+def test_main_silent_on_zero_alerts():
+    """Empty S1+S2 alert lists yield empty message → main() exits silently."""
+    import daily_alert
+    msg = daily_alert.format_message([], [], "bull_low_vol", "2026-04-29")
+    assert msg == ""
+    print("  PASS: zero-alert format_message returns '' (main exits silent)")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -555,6 +748,14 @@ if __name__ == "__main__":
         ("classify_trades", test_classify_trades_tags_entry_regime),
         ("Aggregate metrics", test_aggregate_metrics),
         ("rank filters + splits", test_rank_filters_and_splits),
+        ("daily_alert load_env", test_load_env_reads_dotenv),
+        ("daily_alert load_latest_csv", test_load_latest_cross_section_csv_picks_newest),
+        ("daily_alert filter_top30", test_filter_top30_excludes_low_trades_and_inf_pf),
+        ("daily_alert expected_last_us_trading_day", test_expected_last_us_trading_day_returns_business_day),
+        ("daily_alert check_spx_fresh stale", test_check_spx_fresh_aborts_when_stale),
+        ("daily_alert _md_escape", test_md_escape_special_chars),
+        ("daily_alert format_message", test_format_message_empty_and_populated),
+        ("daily_alert silent on zero alerts", test_main_silent_on_zero_alerts),
     ]
 
     passed = 0
