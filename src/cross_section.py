@@ -42,7 +42,8 @@ REPORTS_DIR = REPO_ROOT / "reports"
 
 SPX_SYMBOL = "^GSPC"
 SPX_START = "2008-01-01"
-MIN_HISTORY_BARS = 2520  # ~10 years of trading days
+MIN_HISTORY_BARS = 756  # ~3 years of trading days
+SHORT_HISTORY_BARS = 1260  # ~5y; ticker below this gets a "thin sample" caveat
 MIN_TRADES_DEFAULT = 5
 TOP_N_DEFAULT = 30
 
@@ -428,6 +429,14 @@ def render_markdown(main_rank: pd.DataFrame, perfect: pd.DataFrame,
                  "membership snapshot, intersected with the local OHLC cache. "
                  "Survivorship bias is acknowledged; delisted names are not in this "
                  "table.\n")
+    parts.append(
+        f"\n*Thin-sample caveat*: tickers with fewer than "
+        f"{SHORT_HISTORY_BARS // 252} years of history (e.g. recent IPOs like "
+        f"HOOD, RIVN, SMR) appear here but their per-regime stats are based on "
+        f"a single regime cycle at most. Treat their rankings as indicative, "
+        f"not statistically robust. Stocks with at least "
+        f"{SHORT_HISTORY_BARS // 252} years of history clear this caveat.\n"
+    )
 
     parts.append("\n## Regime definitions\n")
     parts.append(
