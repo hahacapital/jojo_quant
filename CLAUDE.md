@@ -71,7 +71,7 @@ python3 src/generate_report.py --no-push --no-s3
 ### Cross-section backtest
 
 ```bash
-# All strategies, current universe (cache ∩ Russell 1000 ∪ S&P 500 ∩ ≥10y history)
+# All strategies, current universe (cache ∩ Russell 1000 ∪ S&P 500 ∩ ≥3y history)
 python3 src/cross_section.py
 
 # Single strategy, no push

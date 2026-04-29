@@ -81,16 +81,48 @@ python3 src/cross_section.py --top 50 --min-trades 10
 python3 src/cross_section.py --limit 5 --no-push
 ```
 
-Outputs:
+### Universe
 
-- `reports/cross_section_<date>.md` — top-N table per regime × strategy.
-- `reports/cross_section_<date>.csv` — full per-(ticker, strategy, regime) aggregate.
+`(local OHLC cache) ∩ (current Russell 1000 ∪ S&P 500) ∩ (≥3 years of history)`, plus the six commodity futures regardless of membership. Roughly ~960 tickers today.
 
-Notes:
+The 3-year minimum is permissive on purpose so recent IPOs (HOOD, RIVN, RKLB, COIN, SMR, …) appear; the report adds a "thin-sample caveat" header for tickers with less than 5 years of history.
+
+### Regimes (9 total = 3 trend × 3 vol)
+
+- **Trend (SPX):** `bull` if close ≥ SMA225 AND SMA50 ≥ SMA200; `bear` if close < SMA225 AND SMA50 < SMA200; `neutral` otherwise.
+- **Volatility (SPX):** 30-day annualised realised vol, percentile-ranked over a **5-year rolling** window. `low_vol` ≤ 33%, `mid_vol` 33–67%, `high_vol` > 67%.
+- All inputs use only data on or before each date — no look-ahead. Tests in `src/test_logic.py` enforce this by truncating SPX history and asserting the regime label at the cutoff is unchanged.
+
+### Ranking
+
+Per `(ticker, strategy, regime)` group:
+
+```
+score = profit_factor × √trades        # main rank
+filter: trades ≥ 5
+tie-break: total_pnl desc → win_rate desc
+pf = inf groups → separate "perfect-record" listing
+```
+
+### Outputs
+
+- `reports/cross_section_<date>.md` — top-30 (per regime × strategy) markdown report.
+- `reports/cross_section_<date>.csv` — the full per-`(ticker, strategy, regime)` aggregate (no top-N filter, no `trades ≥ 5` filter).
+
+### Setup notes
 
 - Requires the local OHLC cache; build it first with `python3 src/download_ohlc.py --init`.
 - The first run scrapes Russell 1000 + S&P 500 membership from Wikipedia into `data/index_members.json`.
 - GitHub push only (no S3).
+
+## `reports/` policy
+
+`reports/` is committed to git as the published, browsable archive.
+
+- **Only commit full-universe runs.** No `--limit` smoke tests, no debugging slices.
+- **Update cadence:** monthly. Each month's full run replaces (or sits alongside) the prior file with a new dated filename.
+- Smoke tests should pass `--no-push` (or be deleted before commit).
+- A partial / smoke-test report committed by mistake should be removed and force-resynced; the data is reproducible from the cache.
 
 ## jojo indicator deep dive
 

@@ -81,16 +81,48 @@ python3 src/cross_section.py --top 50 --min-trades 10
 python3 src/cross_section.py --limit 5 --no-push
 ```
 
-输出：
+### 股票池
 
-- `reports/cross_section_<日期>.md` — 每个 regime × 策略 top-N 表格
-- `reports/cross_section_<日期>.csv` — 完整聚合数据
+`(本地 OHLC 缓存) ∩ (当前 Russell 1000 ∪ S&P 500) ∩ (历史 ≥ 3 年)`，外加 6 只商品期货（不受成分限制）。当前约 960 只 ticker。
 
-注意：
+3 年阈值故意宽松，让 HOOD / RIVN / RKLB / COIN / SMR 等近年 IPO 进入分析；报表头部对历史 < 5 年的票打 "thin-sample caveat" 警告。
+
+### Regime（9 = 3 趋势 × 3 波动）
+
+- **趋势 (SPX)**：`bull` = close ≥ SMA225 且 SMA50 ≥ SMA200；`bear` = close < SMA225 且 SMA50 < SMA200；其他为 `neutral`。
+- **波动率 (SPX)**：30 日年化已实现波动，按 **5 年滚动**百分位排名。`low_vol` ≤ 33%，`mid_vol` 33–67%，`high_vol` > 67%。
+- 所有输入只用当日及之前数据 — 无未来函数。`src/test_logic.py` 的 truncation 测试断言截断 SPX 历史后，cutoff 当天 regime 不变。
+
+### 排名
+
+按 `(ticker, strategy, regime)` 分组：
+
+```
+score = profit_factor × √trades       # 主排名
+过滤: trades ≥ 5
+平局: total_pnl 降序 → win_rate 降序
+pf = inf 组 → 单独 "perfect-record" 列表
+```
+
+### 输出
+
+- `reports/cross_section_<日期>.md` — 每个 regime × 策略 top-30 markdown 表格。
+- `reports/cross_section_<日期>.csv` — 完整 `(ticker, strategy, regime)` 聚合（不做 top-N 过滤、不做 `trades ≥ 5` 过滤）。
+
+### 配置说明
 
 - 依赖本地 OHLC 缓存（先跑 `python3 src/download_ohlc.py --init` 生成）
 - 首次运行会从 Wikipedia 抓 Russell 1000 + S&P 500 成分到 `data/index_members.json`
 - 仅推 GitHub，不推 S3
+
+## `reports/` 维护策略
+
+`reports/` 进入 git，作为对外可浏览的归档。
+
+- **只 commit 全 universe 跑出来的报表**，不 commit `--limit` 烟雾测试或调试片段。
+- **更新节奏**：月度。每月跑一次完整版，新文件以日期命名（旧文件可保留或替换）。
+- 烟雾测试用 `--no-push`，或 commit 前删干净。
+- 如果误 commit 了部分 / 烟雾报表，删掉并 push 删除 — 数据可从 cache 重新生成。
 
 ## jojo 指标详解
 
