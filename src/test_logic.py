@@ -121,7 +121,7 @@ def test_stop_loss_at_close():
     assert t.entry_price == 100.0
     # Stop loss exit at bar 25's close (75.0), NOT next bar open
     assert t.exit_price == 75.0, f"Stop loss exit should be at close (75.0), got {t.exit_price}"
-    assert "止损" in t.exit_reason
+    assert "Stop loss" in t.exit_reason
 
     print("  PASS: Stop loss exits at current bar close (intraday)")
 
@@ -272,7 +272,7 @@ def test_run_backtest_e2e():
         entry_dt = pd.Timestamp(str(t.entry_date)[:10])
         if entry_dt in df.index:
             entry_bar_open = float(df.loc[entry_dt, "open"])
-            if t.exit_reason != "持仓中":  # skip open positions
+            if t.exit_reason != "Open position":  # skip open positions
                 pass  # entry check only
 
     print(f"  PASS: E2E test — S1: {r1.num_trades} trades, S2: {r2.num_trades} trades")
@@ -341,6 +341,247 @@ def test_screener_stop_loss_state():
 
 
 # ============================================================
+# Test 9: SPX cache round-trip
+# ============================================================
+def test_spx_cache_roundtrip(tmp_dir=None):
+    """Saving SPX to parquet and re-reading must preserve OHLC."""
+    import tempfile
+    from pathlib import Path
+    import pandas as pd
+    import cross_section as cs
+
+    with tempfile.TemporaryDirectory() as td:
+        # Force the cache path into a temp dir
+        original = cs.SPX_CACHE_PATH
+        cs.SPX_CACHE_PATH = Path(td) / "spx.parquet"
+        try:
+            # Build a fake SPX frame
+            dates = pd.bdate_range("2020-01-01", periods=300)
+            df = pd.DataFrame({
+                "open": np.linspace(3000, 3500, 300),
+                "high": np.linspace(3010, 3510, 300),
+                "low":  np.linspace(2990, 3490, 300),
+                "close": np.linspace(3005, 3505, 300),
+            }, index=dates)
+            cs._save_spx(df)
+            loaded = cs._load_cached_spx()
+            assert loaded is not None, "cached SPX should load"
+            assert len(loaded) == 300
+            assert (loaded["close"] == df["close"]).all()
+        finally:
+            cs.SPX_CACHE_PATH = original
+
+    print("  PASS: SPX cache roundtrip preserves OHLC")
+
+
+# ============================================================
+# Test 10: trend_state has no look-ahead
+# ============================================================
+def test_trend_state_no_lookahead():
+    """trend_state[t] computed on full series == trend_state[t] on truncated."""
+    import cross_section as cs
+    np.random.seed(0)
+    n = 600
+    dates = pd.bdate_range("2018-01-01", periods=n)
+    close = 3000 + np.cumsum(np.random.randn(n) * 5)
+    spx_full = pd.DataFrame({
+        "open": close, "high": close * 1.01, "low": close * 0.99, "close": close,
+    }, index=dates)
+
+    cutoff_idx = 500
+    cutoff = dates[cutoff_idx]
+    spx_trunc = spx_full.iloc[: cutoff_idx + 1]
+
+    trend_full = cs.build_trend_state(spx_full)
+    trend_trunc = cs.build_trend_state(spx_trunc)
+    assert trend_full.loc[cutoff] == trend_trunc.loc[cutoff], (
+        f"trend_state[{cutoff.date()}] differs: full={trend_full.loc[cutoff]} "
+        f"vs trunc={trend_trunc.loc[cutoff]}"
+    )
+    print("  PASS: trend_state has no look-ahead")
+
+
+# ============================================================
+# Test 11: vol_bucket has no look-ahead
+# ============================================================
+def test_vol_bucket_no_lookahead():
+    """vol_bucket[t] from full series == from truncated series at the same t."""
+    import cross_section as cs
+    np.random.seed(1)
+    n = 1800
+    dates = pd.bdate_range("2015-01-01", periods=n)
+    rets = np.random.randn(n) * 0.01
+    close = 3000 * np.exp(np.cumsum(rets))
+    spx_full = pd.DataFrame({
+        "open": close, "high": close, "low": close, "close": close,
+    }, index=dates)
+
+    cutoff_idx = 1500
+    cutoff = dates[cutoff_idx]
+    spx_trunc = spx_full.iloc[: cutoff_idx + 1]
+
+    vb_full = cs.build_vol_bucket(spx_full)
+    vb_trunc = cs.build_vol_bucket(spx_trunc)
+    assert vb_full.loc[cutoff] == vb_trunc.loc[cutoff], (
+        f"vol_bucket[{cutoff.date()}] differs: full={vb_full.loc[cutoff]} "
+        f"vs trunc={vb_trunc.loc[cutoff]}"
+    )
+    print("  PASS: vol_bucket has no look-ahead")
+
+
+# ============================================================
+# Test 12: combined regime labels + ffill lookup
+# ============================================================
+def test_build_regimes_and_lookup():
+    """build_regimes gives 9 buckets + warmup; lookup ffills to prior trading day."""
+    import cross_section as cs
+    np.random.seed(2)
+    n = 1800
+    dates = pd.bdate_range("2015-01-01", periods=n)
+    close = 3000 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
+    spx = pd.DataFrame({
+        "open": close, "high": close, "low": close, "close": close,
+    }, index=dates)
+
+    regimes = cs.build_regimes(spx)
+    assert {"trend_state", "vol_bucket", "regime"} <= set(regimes.columns)
+    valid_labels = {
+        f"{t}_{v}"
+        for t in ("bull", "bear", "neutral")
+        for v in ("low_vol", "mid_vol", "high_vol")
+    } | {"warmup"}
+    assert set(regimes["regime"].unique()) <= valid_labels, (
+        f"unexpected regime labels: {set(regimes['regime'].unique()) - valid_labels}"
+    )
+
+    # Lookup on a Saturday (non-trading day) should ffill to Friday.
+    fri = dates[1500]
+    sat = fri + pd.Timedelta(days=1)
+    assert cs.lookup_regime(str(sat.date()), regimes) == regimes.loc[fri, "regime"]
+
+    # Lookup before any data → 'warmup'
+    assert cs.lookup_regime("1990-01-01", regimes) == "warmup"
+
+    print("  PASS: build_regimes labels + lookup_regime ffill")
+
+
+# ============================================================
+# Test 13: universe builder respects cache + membership + min history
+# ============================================================
+def test_build_universe_filters():
+    """build_universe should keep tickers in (cache ∩ membership) with ≥min_bars,
+    drop everything else, and always include commodity futures with ≥min_bars."""
+    import cross_section as cs
+
+    cache_meta = pd.DataFrame({
+        "num_bars": [3000, 3000, 1000, 3000, 3000],
+        "status": ["active", "active", "active", "active", "active"],
+    }, index=["AAPL", "MSFT", "OLDCO", "GC=F", "RANDM"])
+
+    members = {"AAPL", "MSFT"}  # OLDCO too short, RANDM not a member, GC=F is commodity
+    universe = cs._filter_universe(cache_meta, members, min_bars=2520,
+                                   commodity_set={"GC=F"})
+
+    assert set(universe) == {"AAPL", "MSFT", "GC=F"}, f"got {universe}"
+    print("  PASS: build_universe filters cache ∩ membership ∩ ≥min_bars + commodities")
+
+
+# ============================================================
+# Test 14: classify_trades attaches the right regime per trade
+# ============================================================
+def test_classify_trades_tags_entry_regime():
+    """classify_trades produces (ticker, strategy, regime, pnl_pct, holding_days)
+    rows where regime corresponds to entry_date."""
+    import cross_section as cs
+    from backtest import Trade
+
+    dates = pd.bdate_range("2020-01-01", periods=10)
+    regimes = pd.DataFrame({
+        "trend_state": ["bull"] * 10,
+        "vol_bucket": ["low_vol"] * 5 + ["high_vol"] * 5,
+        "regime": ["bull_low_vol"] * 5 + ["bull_high_vol"] * 5,
+    }, index=dates)
+
+    trades = [
+        Trade(entry_date=str(dates[2]), entry_price=100, exit_date=str(dates[4]),
+              exit_price=110, holding_days=2, pnl_pct=10.0, exit_reason="x"),
+        Trade(entry_date=str(dates[7]), entry_price=200, exit_date=str(dates[9]),
+              exit_price=180, holding_days=2, pnl_pct=-10.0, exit_reason="y"),
+    ]
+    rows = cs.classify_trades("AAPL", "S1", trades, regimes)
+    assert len(rows) == 2
+    assert rows[0]["regime"] == "bull_low_vol"
+    assert rows[1]["regime"] == "bull_high_vol"
+    assert rows[0]["ticker"] == "AAPL" and rows[0]["strategy"] == "S1"
+    assert rows[0]["pnl_pct"] == 10.0
+    print("  PASS: classify_trades tags entry-date regime per trade")
+
+
+# ============================================================
+# Test 15: aggregate computes pf, win_rate, max_dd
+# ============================================================
+def test_aggregate_metrics():
+    """aggregate produces correct trades / win_rate / pf / max_dd."""
+    import cross_section as cs
+    rows = [
+        {"ticker": "A", "strategy": "S1", "regime": "bull_low_vol",
+         "entry_date": "2020-01-02", "pnl_pct": 10.0, "holding_days": 5},
+        {"ticker": "A", "strategy": "S1", "regime": "bull_low_vol",
+         "entry_date": "2020-02-02", "pnl_pct": -5.0, "holding_days": 3},
+        {"ticker": "A", "strategy": "S1", "regime": "bull_low_vol",
+         "entry_date": "2020-03-02", "pnl_pct": 20.0, "holding_days": 8},
+    ]
+    agg = cs.aggregate(rows)
+    r = agg.iloc[0]
+    assert r["trades"] == 3
+    # win_rate is stored rounded to 2 decimals; tolerance must accommodate that
+    assert abs(r["win_rate"] - (2 / 3 * 100)) < 1e-2
+    assert abs(r["total_pnl"] - 25.0) < 1e-6
+    # gross profit 30, gross loss 5 → pf = 6 (rounded to 3 decimals)
+    assert abs(r["pf"] - 6.0) < 1e-3
+    # equity 1.0 → 1.10 → 1.045 → 1.254. peak=1.10 then dropping to 1.045 = 5% drawdown
+    assert abs(r["max_dd"] - 5.0) < 1e-2
+    print("  PASS: aggregate metrics match expected values")
+
+
+# ============================================================
+# Test 16: rank applies min-trades filter and splits perfect records
+# ============================================================
+def test_rank_filters_and_splits():
+    """rank() drops trades < min_trades and routes pf=inf to perfect_record."""
+    import math as _math
+    import cross_section as cs
+    agg = pd.DataFrame([
+        {"ticker": "LOW", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 3, "win_rate": 100.0, "total_pnl": 12.0, "avg_pnl": 4.0,
+         "pf": 5.0, "max_dd": 0.5, "avg_holding": 4, "score": 5 * _math.sqrt(3)},
+        {"ticker": "PERF", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 8, "win_rate": 100.0, "total_pnl": 80.0, "avg_pnl": 10.0,
+         "pf": float("inf"), "max_dd": 0.0, "avg_holding": 5, "score": float("inf")},
+        {"ticker": "GOOD", "strategy": "S1", "regime": "bull_low_vol",
+         "trades": 12, "win_rate": 75.0, "total_pnl": 200.0, "avg_pnl": 16.7,
+         "pf": 4.0, "max_dd": 5.0, "avg_holding": 6, "score": 4 * _math.sqrt(12)},
+        {"ticker": "TIE1", "strategy": "S1", "regime": "bear_high_vol",
+         "trades": 6, "win_rate": 50.0, "total_pnl": 30.0, "avg_pnl": 5.0,
+         "pf": 2.0, "max_dd": 8.0, "avg_holding": 5, "score": 2 * _math.sqrt(6)},
+        {"ticker": "TIE2", "strategy": "S1", "regime": "bear_high_vol",
+         "trades": 6, "win_rate": 50.0, "total_pnl": 60.0, "avg_pnl": 10.0,
+         "pf": 2.0, "max_dd": 8.0, "avg_holding": 5, "score": 2 * _math.sqrt(6)},
+    ])
+    main_rank, perfect = cs.rank(agg, min_trades=5)
+
+    # LOW dropped (trades < 5); PERF in perfect; GOOD in main
+    assert "LOW" not in set(main_rank["ticker"])
+    assert set(perfect["ticker"]) == {"PERF"}
+    assert "GOOD" in set(main_rank["ticker"])
+
+    # Tie break: same score, TIE2 has higher total_pnl → ranks above TIE1
+    bear = main_rank[main_rank["regime"] == "bear_high_vol"].reset_index(drop=True)
+    assert list(bear["ticker"]) == ["TIE2", "TIE1"]
+    print("  PASS: rank filters min-trades and splits perfect records")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -358,6 +599,14 @@ if __name__ == "__main__":
         ("Fund next-day exec", test_fund_next_day_execution),
         ("E2E backtest", test_run_backtest_e2e),
         ("Screener stop loss", test_screener_stop_loss_state),
+        ("SPX cache roundtrip", test_spx_cache_roundtrip),
+        ("trend_state no look-ahead", test_trend_state_no_lookahead),
+        ("vol_bucket no look-ahead", test_vol_bucket_no_lookahead),
+        ("build_regimes + lookup", test_build_regimes_and_lookup),
+        ("Universe filters", test_build_universe_filters),
+        ("classify_trades", test_classify_trades_tags_entry_regime),
+        ("Aggregate metrics", test_aggregate_metrics),
+        ("rank filters + splits", test_rank_filters_and_splits),
     ]
 
     passed = 0

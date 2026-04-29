@@ -1,5 +1,5 @@
 """
-jojo 复合动量指标 — pure pandas/numpy implementation matching TradingView Pine Script.
+jojo composite momentum indicator — pure pandas/numpy implementation matching TradingView Pine Script.
 
 No external TA library required. All indicators implemented from scratch using
 Wilder's smoothing (RMA) and EMA to match TradingView's calculations.

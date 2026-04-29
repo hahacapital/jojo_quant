@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -25,12 +26,15 @@ from backtest import Trade, run_backtest
 # Config
 # ---------------------------------------------------------------------------
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+REPORTS_DIR = REPO_ROOT / "reports"
+
 TICKERS = ["TSM", "GOOG", "AAPL", "TSLA", "MSFT", "PLTR", "ANET", "NVDA",
            "HOOD", "MU", "RKLB", "AMZN", "META"]
 START_DATE = "2009-01-01"
 SPX_SYMBOL = "^GSPC"
 SMA_LENGTH = 225
-REPORT_PATH = "reports/backtest_report.md"
+REPORT_PATH = str(REPORTS_DIR / "backtest_report.md")
 S3_DIR = "s3://staking-ledger-bpt/jojo_quant/reports/"
 
 
@@ -190,24 +194,24 @@ def fmt_metric(val):
 def metrics_table(overall: dict, bull: dict, bear: dict) -> str:
     """Generate a markdown table comparing Overall / Bull / Bear metrics."""
     labels = {
-        "num_trades": "交易次数",
-        "win_rate": "胜率 (%)",
-        "avg_pnl": "平均收益 (%)",
-        "median_pnl": "中位收益 (%)",
-        "total_pnl": "累计收益 (%)",
-        "profit_factor": "盈亏比",
-        "max_win": "最大单笔盈利 (%)",
-        "max_loss": "最大单笔亏损 (%)",
-        "max_drawdown": "最大回撤 (%)",
-        "avg_holding": "平均持仓 (天)",
-        "median_holding": "中位持仓 (天)",
-        "min_holding": "最短持仓 (天)",
-        "max_holding": "最长持仓 (天)",
-        "win_streak": "最大连胜",
-        "loss_streak": "最大连亏",
-        "reward_risk": "收益风险比",
+        "num_trades": "Trades",
+        "win_rate": "Win rate (%)",
+        "avg_pnl": "Avg PnL (%)",
+        "median_pnl": "Median PnL (%)",
+        "total_pnl": "Total PnL (%)",
+        "profit_factor": "Profit factor",
+        "max_win": "Max single win (%)",
+        "max_loss": "Max single loss (%)",
+        "max_drawdown": "Max drawdown (%)",
+        "avg_holding": "Avg holding (days)",
+        "median_holding": "Median holding (days)",
+        "min_holding": "Min holding (days)",
+        "max_holding": "Max holding (days)",
+        "win_streak": "Max win streak",
+        "loss_streak": "Max loss streak",
+        "reward_risk": "Reward/risk ratio",
     }
-    lines = ["| 指标 | 整体 | 牛市 | 熊市 |", "|------|------|------|------|"]
+    lines = ["| Metric | Overall | Bull | Bear |", "|------|------|------|------|"]
     for key, label in labels.items():
         o = fmt_metric(overall.get(key, ""))
         b = fmt_metric(bull.get(key, ""))
@@ -219,14 +223,14 @@ def metrics_table(overall: dict, bull: dict, bear: dict) -> str:
 def per_stock_table(results: list[tuple[str, dict]]) -> str:
     """Generate per-stock summary table."""
     lines = [
-        "| 股票 | 交易次数 | 胜率 | 平均收益 | 累计收益 | 最大回撤 | 平均持仓 | 盈亏比 |",
+        "| Stock | Trades | Win rate | Avg PnL | Total PnL | Max drawdown | Avg holding | Profit factor |",
         "|------|----------|------|----------|----------|----------|----------|--------|",
     ]
     results = sorted(results, key=lambda x: x[1]['profit_factor'] if x[1]['profit_factor'] != "inf" else float("inf"), reverse=True)
     for sym, m in results:
         lines.append(
             f"| {sym} | {m['num_trades']} | {m['win_rate']}% | {m['avg_pnl']}% "
-            f"| {m['total_pnl']}% | {m['max_drawdown']}% | {m['avg_holding']}天 "
+            f"| {m['total_pnl']}% | {m['max_drawdown']}% | {m['avg_holding']} days "
             f"| {fmt_metric(m['profit_factor'])} |"
         )
     return "\n".join(lines)
@@ -235,14 +239,14 @@ def per_stock_table(results: list[tuple[str, dict]]) -> str:
 def trade_detail_table(trades: list[Trade], regime: pd.Series) -> str:
     """Generate detailed trade list."""
     if not trades:
-        return "*无交易*\n"
-    regime_cn = {"bull": "牛市", "bear": "熊市", "unknown": "未知"}
+        return "*No trades*\n"
+    regime_cn = {"bull": "Bull", "bear": "Bear", "unknown": "Unknown"}
     lines = [
-        "| # | 买入 | 卖出 | 持仓天数 | 收益% | 市场环境 | 卖出原因 |",
+        "| # | Entry | Exit | Holding days | PnL% | Regime | Exit reason |",
         "|---|------|------|----------|-------|----------|----------|",
     ]
     for i, t in enumerate(trades, 1):
-        r = regime_cn.get(get_trade_regime(t, regime), "未知")
+        r = regime_cn.get(get_trade_regime(t, regime), "Unknown")
         lines.append(
             f"| {i} | {str(t.entry_date)[:10]} @ {t.entry_price} "
             f"| {str(t.exit_date)[:10]} @ {t.exit_price} "
@@ -287,16 +291,16 @@ def _collect_strategy_section(all_results, regime, result_key):
 def _append_strategy_block(md, label, m_all, m_bull, m_bear, per_stock, per_stock_bull, per_stock_bear):
     """Append a strategy metrics block (summary + per-stock tables) to md."""
     md.append(f"### {label}\n")
-    md.append("#### 汇总指标\n")
+    md.append("#### Summary Metrics\n")
     md.append(metrics_table(m_all, m_bull, m_bear))
     md.append("")
-    md.append("#### 个股汇总 — 整体\n")
+    md.append("#### Per-Stock Summary — Overall\n")
     md.append(per_stock_table(per_stock))
     md.append("")
-    md.append("#### 个股汇总 — 牛市\n")
+    md.append("#### Per-Stock Summary — Bull\n")
     md.append(per_stock_table(per_stock_bull))
     md.append("")
-    md.append("#### 个股汇总 — 熊市\n")
+    md.append("#### Per-Stock Summary — Bear\n")
     md.append(per_stock_table(per_stock_bear))
     md.append("")
 
@@ -307,37 +311,37 @@ def generate_report(all_results, regime, run_date):
     all_results: list of (sym, r1, r2, r1_opt, r2a_opt, r2b_opt) tuples
     """
     md = []
-    md.append(f"# 韭韭量化 回测报告\n")
-    md.append(f"**生成日期**: {run_date}")
-    md.append(f"**回测区间**: {START_DATE} 至今")
-    md.append(f"**股票数量**: {len(all_results)}")
-    md.append(f"**股票列表**: {', '.join(item[0] for item in all_results)}\n")
+    md.append(f"# 韭韭量化 Backtest Report\n")
+    md.append(f"**Generated**: {run_date}")
+    md.append(f"**Period**: {START_DATE} to today")
+    md.append(f"**Stock count**: {len(all_results)}")
+    md.append(f"**Stocks**: {', '.join(item[0] for item in all_results)}\n")
 
-    md.append("## 市场环境定义\n")
-    md.append(f"- **牛市 (Bull)**: S&P 500 收盘价 >= SMA({SMA_LENGTH})")
-    md.append(f"- **熊市 (Bear)**: S&P 500 收盘价 < SMA({SMA_LENGTH})\n")
+    md.append("## Market Regime Definition\n")
+    md.append(f"- **Bull**: S&P 500 close >= SMA({SMA_LENGTH})")
+    md.append(f"- **Bear**: S&P 500 close < SMA({SMA_LENGTH})\n")
 
     # --- Strategy 1 ---
-    md.append("---\n\n## 策略1: 超买动量 (上穿76买入 → 下穿68卖出 | 止损20% | ATR%≥2.0)\n")
+    md.append("---\n\n## Strategy 1: Overbought Momentum (Cross above 76 -> Cross below 68 | Stop loss 20% | ATR%>=2.0)\n")
 
     data_opt = _collect_strategy_section(all_results, regime, 3)  # r1_opt
-    _append_strategy_block(md, "汇总", *data_opt)
+    _append_strategy_block(md, "Summary", *data_opt)
 
-    md.append("### 个股交易明细\n")
+    md.append("### Per-Stock Trade Details\n")
     for item in all_results:
         md.append(f"- [{item[0]}](stocks/{item[0]}.md)")
     md.append("")
 
     # --- Strategy 2 ---
-    md.append("---\n\n## 策略2: 超卖反转 (下穿28拐头买入 → 上穿51或再穿28卖出)\n")
+    md.append("---\n\n## Strategy 2: Oversold Reversal (Below 28 turning up -> Cross above 51 or below 28 again)\n")
 
     data_a = _collect_strategy_section(all_results, regime, 4)  # r2a_opt
-    _append_strategy_block(md, "方案A (止损20% + SPX趋势过滤)", *data_a)
+    _append_strategy_block(md, "Variant A (Stop loss 20% + SPX trend filter)", *data_a)
 
     data_b = _collect_strategy_section(all_results, regime, 5)  # r2b_opt
-    _append_strategy_block(md, "方案B (止损20% + 个股SMA120过滤)", *data_b)
+    _append_strategy_block(md, "Variant B (Stop loss 20% + Stock SMA120 filter)", *data_b)
 
-    md.append("### 个股交易明细\n")
+    md.append("### Per-Stock Trade Details\n")
     for item in all_results:
         md.append(f"- [{item[0]}](stocks/{item[0]}.md)")
     md.append("")
@@ -349,11 +353,11 @@ def _detail_section(md, label, r, regime):
     """Append a trade detail section for one strategy variant."""
     md.append(f"### {label}\n")
     if not r.trades:
-        md.append("*无交易*\n")
+        md.append("*No trades*\n")
         return
     m = compute_metrics(r.trades)
-    md.append(f"**{m['num_trades']}笔交易 | 胜率 {m['win_rate']}% | "
-              f"累计收益 {m['total_pnl']}% | 盈亏比 {fmt_metric(m['profit_factor'])}**\n")
+    md.append(f"**{m['num_trades']} trades | Win rate {m['win_rate']}% | "
+              f"Total PnL {m['total_pnl']}% | Profit factor {fmt_metric(m['profit_factor'])}**\n")
     md.append(trade_detail_table(r.trades, regime))
     md.append("")
 
@@ -361,16 +365,16 @@ def _detail_section(md, label, r, regime):
 def generate_stock_detail(sym, r1, r2, r1_opt, r2a_opt, r2b_opt, regime, run_date):
     """Generate per-stock detail markdown with trade lists for all strategy variants."""
     md = []
-    md.append(f"# {sym} 交易明细\n")
-    md.append(f"**生成日期**: {run_date}")
-    md.append(f"[← 返回汇总报告](../backtest_report.md)\n")
+    md.append(f"# {sym} Trade Details\n")
+    md.append(f"**Generated**: {run_date}")
+    md.append(f"[<- Back to summary report](../backtest_report.md)\n")
 
-    md.append("## 策略1: 超买动量 (上穿76买入 → 下穿68卖出 | 止损20% | ATR%≥2.0)\n")
-    _detail_section(md, "交易明细", r1_opt, regime)
+    md.append("## Strategy 1: Overbought Momentum (Cross above 76 -> Cross below 68 | Stop loss 20% | ATR%>=2.0)\n")
+    _detail_section(md, "Trade Details", r1_opt, regime)
 
-    md.append("## 策略2: 超卖反转 (下穿28拐头买入 → 上穿51或再穿28卖出)\n")
-    _detail_section(md, "方案A (止损20% + SPX趋势过滤)", r2a_opt, regime)
-    _detail_section(md, "方案B (止损20% + 个股SMA120过滤)", r2b_opt, regime)
+    md.append("## Strategy 2: Oversold Reversal (Below 28 turning up -> Cross above 51 or below 28 again)\n")
+    _detail_section(md, "Variant A (Stop loss 20% + SPX trend filter)", r2a_opt, regime)
+    _detail_section(md, "Variant B (Stop loss 20% + Stock SMA120 filter)", r2b_opt, regime)
 
     return "\n".join(md)
 
@@ -411,7 +415,8 @@ def main():
 
     # Step 4: Generate reports
     print(f"\n[4/5] Generating reports...")
-    os.makedirs("reports/stocks", exist_ok=True)
+    stocks_dir = REPORTS_DIR / "stocks"
+    stocks_dir.mkdir(parents=True, exist_ok=True)
 
     # Main summary report
     report = generate_report(all_results, regime, run_date)
@@ -422,7 +427,7 @@ def main():
     # Per-stock detail files
     for sym, r1, r2, r1_opt, r2a_opt, r2b_opt in all_results:
         detail = generate_stock_detail(sym, r1, r2, r1_opt, r2a_opt, r2b_opt, regime, run_date)
-        detail_path = f"reports/stocks/{sym}.md"
+        detail_path = stocks_dir / f"{sym}.md"
         with open(detail_path, "w") as f:
             f.write(detail)
         print(f"  {detail_path} ({len(detail)} chars)")
@@ -431,13 +436,15 @@ def main():
     print(f"\n[5/5] Publishing...")
     if not args.no_push:
         try:
-            subprocess.run(["git", "add", "reports/"], check=True, capture_output=True)
+            subprocess.run(["git", "add", str(REPORTS_DIR)], check=True,
+                           capture_output=True, cwd=REPO_ROOT)
             subprocess.run(
                 ["git", "commit", "-m",
                  f"Update backtest report {run_date}\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"],
-                check=True, capture_output=True,
+                check=True, capture_output=True, cwd=REPO_ROOT,
             )
-            subprocess.run(["git", "push"], check=True, capture_output=True)
+            subprocess.run(["git", "push"], check=True, capture_output=True,
+                           cwd=REPO_ROOT)
             print("  Pushed to GitHub.")
         except subprocess.CalledProcessError as e:
             print(f"  Git push failed: {e.stderr.decode() if e.stderr else e}")
@@ -447,7 +454,7 @@ def main():
     if not args.no_s3:
         try:
             subprocess.run(
-                ["aws", "s3", "sync", "reports/", S3_DIR],
+                ["aws", "s3", "sync", str(REPORTS_DIR), S3_DIR],
                 check=True, capture_output=True,
             )
             print(f"  Uploaded to {S3_DIR}")

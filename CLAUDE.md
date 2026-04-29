@@ -2,160 +2,190 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# jojo_quant (韭韭量化) - jojo指标选股工具
+# jojo_quant (韭韭量化) — jojo signal screening tool
 
-基于 jojo 复合动量指标的全市场扫描工具。扫描范围覆盖 NASDAQ + NYSE 全部股票和商品期货。
+A full-market screening tool built on the **jojo** composite momentum indicator. The scan covers every NASDAQ + NYSE stock and a fixed list of commodity futures.
 
-## 可用命令
+## Repo layout
 
-### 每日扫描
+All Python sources live under `src/`. The repo root keeps only:
 
-```bash
-# 扫描策略1信号（超买动量）
-python3 screener.py --strategy 1
+- `jojo.pine` — TradingView Pine Script v6 reference implementation.
+- `README.md` (English) and `README.zh.md` (Chinese mirror).
+- `CLAUDE.md` (this file).
+- `requirements.txt`.
+- `data/`, `reports/`, `logs/` (gitignored).
+- `docs/superpowers/specs/` and `docs/superpowers/plans/` for design/implementation docs.
 
-# 扫描策略2信号（超卖反转）
-python3 screener.py --strategy 2
+When invoking any script, use `python3 src/<file>.py` from the repo root.
 
-# 扫描全部策略
-python3 screener.py --strategy all
+## Available commands
 
-# 限制返回数量
-python3 screener.py --strategy 1 --top 20
-```
-
-### 参数说明
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--strategy` | `all` | `1`=超买动量, `2`=超卖反转, `all`=全部 |
-| `--top N` | 全部 | 只显示前 N 个结果 |
-| `--days N` | 120 | 下载 N 天历史数据用于信号检测 |
-| `--batch N` | 200 | 每批下载的 ticker 数量 |
-
-### 历史回测
+### Daily screen
 
 ```bash
-# 回测单只或多只股票
-python3 backtest.py TSLA NVDA HOOD --years 3
+# Strategy 1 (overbought momentum)
+python3 src/screener.py --strategy 1
 
-# 使用 TradingView CSV 数据回测
-python3 backtest.py --csv data.csv --use-tv --label TSLA
+# Strategy 2 (oversold reversal)
+python3 src/screener.py --strategy 2
+
+# All strategies
+python3 src/screener.py --strategy all
+
+# Limit results
+python3 src/screener.py --strategy 1 --top 20
 ```
 
-### 生成回测报告
+### Flags
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `--strategy` | `all` | `1` = overbought momentum, `2` = oversold reversal, `all` = both |
+| `--top N` | unbounded | show only top N rows |
+| `--days N` | 120 | calendar days of history downloaded for signal detection |
+| `--batch N` | 200 | tickers per yfinance batch |
+
+### Historical backtest
 
 ```bash
-# 生成13只股票的完整回测报告（自动推送GitHub和S3）
-python3 generate_report.py
+# Backtest one or more tickers
+python3 src/backtest.py TSLA NVDA HOOD --years 3
 
-# 只生成不推送
-python3 generate_report.py --no-push --no-s3
+# Backtest from a TradingView CSV
+python3 src/backtest.py --csv data.csv --use-tv --label TSLA
 ```
 
-> `generate_report.py` 默认推送到 GitHub 和 S3（见下方"外部依赖"）。无凭证或调试时务必加 `--no-push --no-s3`。
-
-### 测试与调试
+### Backtest report generator
 
 ```bash
-# 回测逻辑测试（基于 assert，无 pytest 配置；这是项目唯一的测试入口）
-python3 test_logic.py
+# Generate the 13-stock report (auto-pushes GitHub + S3)
+python3 src/generate_report.py
 
-# 校验 jojo 指标与 TradingView 导出 CSV 的差异
-python3 validate.py
-
-# 输出 jojo 各子指标分量（RSI/WR/CMO/KD/TSI/ADX）用于排查
-python3 debug_indicators.py
-
-# 比较 4 种基金选股排名策略
-python3 compare_ranking.py
+# Generate locally only
+python3 src/generate_report.py --no-push --no-s3
 ```
 
-## 策略说明
+> `generate_report.py` pushes to GitHub and S3 by default (see "External dependencies" below). Always pass `--no-push --no-s3` when credentials aren't set or you're debugging.
 
-### 策略1: 超买动量
-- **买入**: jojo指标上穿 76
-- **卖出**: jojo指标下穿 68
-- **过滤**: ATR%(14) >= 2.0（过滤低波动股）
-- **止损**: -20%
-- **适合**: 高波动股票（TSLA, NVDA, RKLB 等）
+### Cross-section backtest
 
-### 策略2: 超卖反转
-- **买入**: jojo指标在 28 以下拐头向上
-- **卖出**: jojo指标上穿 51，或再次下穿 28
-- **止损**: -20%
-- **适合**: 超卖反弹机会
+```bash
+# All strategies, current universe (cache ∩ Russell 1000 ∪ S&P 500 ∩ ≥10y history)
+python3 src/cross_section.py
 
-## 输出格式
+# Single strategy, no push
+python3 src/cross_section.py --strategy 1 --no-push
 
-每个信号包含以下字段：
+# Smoke test
+python3 src/cross_section.py --limit 5 --no-push
+```
 
-| 字段 | 说明 |
-|------|------|
-| ticker | 标的代码 |
-| name | 英文名称 |
-| cn_name | 中文名称（常见标的） |
-| industry | 行业分类 |
-| mkt_cap_fmt | 市值（格式化） |
-| close | 最新收盘价 |
-| jojo | jojo指标当前值 |
-| atr_pct | ATR%（仅策略1） |
-| bt_trades | 历史回测交易次数（2009年至今） |
-| bt_win_rate | 历史胜率% |
-| bt_total_pnl | 历史累计收益% |
-| bt_pf | 盈亏比 (Profit Factor) |
-| bt_max_dd | 最大回撤% |
-| {regime}_trades | 当前市场环境下的交易次数 |
-| {regime}_win% | 当前市场环境下的胜率 |
-| {regime}_pnl% | 当前市场环境下的累计收益 |
-| {regime}_pf | 当前市场环境下的盈亏比 |
-| {regime}_dd% | 当前市场环境下的最大回撤 |
+### Tests and debugging
 
-> **市场环境判断**: SPX 收盘价 >= SMA(225) 为牛市，< SMA(225) 为熊市。输出中 {regime} 会根据当前 SPX 状态自动替换为"牛市"或"熊市"，只展示当前环境对应的数据。
+```bash
+# Backtest logic assertions (assert-based, no pytest config; this is the project's only test entry point)
+python3 src/test_logic.py
 
-## 过滤规则
+# Cross-check jojo values against a TradingView CSV
+python3 src/validate.py
 
-- 股票：市值 >= 1B USD，排除 ETF
-- 商品期货：不做市值过滤
+# Print each jojo sub-indicator (RSI / WR / CMO / KD / TSI / ADX) for a ticker
+python3 src/debug_indicators.py
 
-## 覆盖范围
+# Compare 4 fund ranking methods
+python3 src/compare_ranking.py
+```
 
-- **股票**: NASDAQ + NYSE 全部（约 6000+）
-- **商品期货**: 黄金(GC=F), 白银(SI=F), 原油(CL=F), 天然气(NG=F), 铜(HG=F), 铂金(PL=F)
+## Strategies
 
-## 架构
+### Strategy 1 — Overbought Momentum
+- **Buy:** jojo crosses above 76
+- **Sell:** jojo drops below 68
+- **Filter:** ATR%(14) ≥ 2.0 (skip low-volatility names)
+- **Stop loss:** -20%
+- **Best for:** high-volatility stocks (TSLA, NVDA, RKLB, etc.)
 
-模块职责与数据流：
+### Strategy 2 — Oversold Reversal
+- **Buy:** jojo turns up while still below 28
+- **Sell:** jojo crosses above 51, or drops back below 28
+- **Stop loss:** -20%
+- **Best for:** mean-reversion / oversold-bounce setups
 
-- **`indicators.py`** — 纯 pandas/numpy，无 I/O。导出 `compute_jojo(df)`，内部由 6 个子指标合成（`_rsi` / `_willr` / `_cmo` / `_stoch` / `_tsi` / `_dmi_adx`，配合 `_rma` / `_ema` 平滑）。被其他所有模块复用。
-- **`backtest.py`** — 暴露 `backtest_strategy1()` / `backtest_strategy2()`（numpy 向量化模拟）以及编排函数 `run_backtest()`（下载 → 指标 → 策略 → 按市场环境拆分指标）。被 `screener.py` 与 `generate_report.py` 调用。
-- **`screener.py`** — 每日扫描入口：`yfinance` 批量下载 OHLC → `compute_jojo` → 当日信号筛选 → 用 `run_backtest()` 给每行附加历史回测指标（整段 + 当前 SPX 环境子集） → 排名输出。
-- **市场环境**: 由 `^GSPC` 收盘价对比 SMA(225) 决定，用于挑选输出中显示哪一组 `{regime}_*` 列。
+## Output schema
 
-## 项目文件
+Each signal row contains:
 
-| 文件 | 说明 |
-|------|------|
-| `screener.py` | 全市场扫描工具（每日入口） |
-| `backtest.py` | 历史回测引擎（`run_backtest`、`backtest_strategy1/2`） |
-| `indicators.py` | jojo 指标计算（纯 pandas/numpy，无 I/O） |
-| `generate_report.py` | 批量回测报告生成（默认推 GitHub + S3） |
-| `fund_backtest.py` | 基金组合回测（内部工具，支持 `--universe sp500/sp500+/report/custom`、`--historical` 反生存者偏差、`--compare` 多配置对比；输出 `fund_equity.csv` / `fund_trades.csv`） |
-| `compare_ranking.py` | 比较 4 种基金选股排名方法 |
-| `test_logic.py` | 回测逻辑断言测试（项目唯一测试入口） |
-| `validate.py` | 与 TradingView CSV 对账 |
-| `debug_indicators.py` | 子指标分量诊断 |
-| `jojo.pine` | TradingView Pine Script 版本 |
+| Field | Meaning |
+|-------|---------|
+| ticker | Symbol |
+| name | English company name |
+| cn_name | Chinese name (where available) |
+| industry | Industry classification |
+| mkt_cap_fmt | Formatted market cap |
+| close | Latest close |
+| jojo | Current jojo value |
+| atr_pct | ATR% (Strategy 1 only) |
+| bt_trades | Historical backtest trade count (2009 → present) |
+| bt_win_rate | Historical win rate % |
+| bt_total_pnl | Historical total PnL % |
+| bt_pf | Profit factor |
+| bt_max_dd | Max drawdown % |
+| `{regime}_trades` | Trade count in the **current** SPX regime |
+| `{regime}_win%` | Win rate in the current regime |
+| `{regime}_pnl%` | Total PnL in the current regime |
+| `{regime}_pf` | Profit factor in the current regime |
+| `{regime}_dd%` | Max drawdown in the current regime |
 
-## 依赖
+> **Regime detection (screener / generate_report):** SPX close ≥ SMA(225) → `bull`, otherwise `bear`. The `{regime}` placeholder in the output is replaced at runtime, so only the current regime's columns appear. `cross_section.py` uses a finer 9-bucket regime (see "Architecture" below).
+
+## Filters
+
+- Stocks: market cap ≥ 1B USD; ETFs excluded.
+- Commodity futures: no market-cap filter.
+
+## Coverage
+
+- **Stocks:** all of NASDAQ + NYSE (~6000+).
+- **Commodity futures:** Gold (`GC=F`), Silver (`SI=F`), Crude Oil (`CL=F`), Natural Gas (`NG=F`), Copper (`HG=F`), Platinum (`PL=F`).
+
+## Architecture
+
+Module responsibilities and data flow:
+
+- **`src/indicators.py`** — pure pandas/numpy, no I/O. Exposes `compute_jojo(df)`; internally composes six sub-indicators (`_rsi` / `_willr` / `_cmo` / `_stoch` / `_tsi` / `_dmi_adx`) with `_rma` / `_ema` smoothing helpers. Reused by every other module.
+- **`src/backtest.py`** — exposes `backtest_strategy1()` / `backtest_strategy2()` (numpy-vectorised simulation) and the orchestration helper `run_backtest()` (download → indicator → strategy → split metrics by market regime). Called by `screener.py` and `generate_report.py`.
+- **`src/screener.py`** — daily-scan entry point: `yfinance` bulk OHLC download → `compute_jojo` → today's signal filter → `run_backtest()` adds historical metrics (full + current-regime subset) → ranked output.
+- **`src/cross_section.py`** — cross-section backtest: `build_universe()` returns cache ∩ Wikipedia large-cap membership; `build_regimes()` computes SPX trend (SMA50/200/225) × 5-year rolling vol-rank → 9 buckets; each stock runs `run_backtest`, trades aggregate by entry-date regime, ranked by `score = pf × √trades`. GitHub push only.
+- **Regime decision:** `^GSPC` close vs SMA(225) for the screener / generate_report path. `cross_section.py` uses a finer 9-bucket regime (3 trend states × 3 vol buckets).
+
+## Project files
+
+| Path | Description |
+|------|-------------|
+| `src/screener.py` | Full-market scanner (daily entry point) |
+| `src/backtest.py` | Historical backtest engine (`run_backtest`, `backtest_strategy1/2`) |
+| `src/indicators.py` | jojo indicator computation (pure pandas/numpy, no I/O) |
+| `src/generate_report.py` | Batch backtest report generator (default: push GitHub + S3) |
+| `src/cross_section.py` | Cross-section backtest: rank S1/S2 per stock across 9 SPX trend × vol regimes |
+| `src/fund_backtest.py` | Fund portfolio backtester (internal tool, supports `--universe sp500/sp500+/report/custom`, `--historical` for survivorship-bias-free runs, `--compare` for multi-config comparison; outputs `fund_equity.csv` / `fund_trades.csv`) |
+| `src/compare_ranking.py` | Compares the 4 fund-ranking methods |
+| `src/test_logic.py` | Assert-based backtest logic tests (project's only test entry point) |
+| `src/validate.py` | Cross-checks jojo against TradingView CSVs |
+| `src/debug_indicators.py` | Per-sub-indicator diagnostics |
+| `src/data_loader.py` · `src/download_ohlc.py` | Local OHLC parquet cache (read + maintain) |
+| `jojo.pine` | TradingView Pine Script reference implementation (kept at repo root) |
+
+## Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 外部依赖
+### External services
 
-- **GitHub**: `generate_report.py` 默认 `git add/commit/push`，需要本地 git 凭证已配置。
-- **S3**: 报告默认上传到 `s3://staking-ledger-bpt/jojo_quant/reports/`（路径硬编码），需要 AWS CLI 与对应 IAM 凭证。两者都可用 `--no-push --no-s3` 跳过。
-- **yfinance**: 匿名访问，无需 API key。
-- **FMP**（公司 profile）: 有速率限制，失败时降级为空 profile，不会阻塞流程。
+- **GitHub:** `generate_report.py` and `cross_section.py` default to `git add/commit/push`; local git credentials must be configured.
+- **S3:** `generate_report.py` uploads to `s3://staking-ledger-bpt/jojo_quant/reports/` (path hard-coded). Requires the AWS CLI and matching IAM credentials. `cross_section.py` does **not** use S3. Both scripts skip publishing with `--no-push` (and `--no-s3` for `generate_report.py`).
+- **yfinance:** anonymous access, no API key.
+- **FMP** (company profiles): rate-limited; failures degrade to empty profile and never block the pipeline.
+- **Wikipedia:** scraped for Russell 1000 + S&P 500 membership (`cross_section.py`) and historical S&P 500 changes (`fund_backtest.py --historical`). The cross-section path caches into `data/index_members.json` after the first successful fetch.

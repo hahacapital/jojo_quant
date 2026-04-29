@@ -1,11 +1,11 @@
 """
 Backtest — test historical performance of jojo strategies.
 
-Strategy 1 (超买动量):
+Strategy 1 (Overbought Momentum):
     BUY  when jojo crosses above 76
     SELL when jojo drops below 68
 
-Strategy 2 (超卖反转):
+Strategy 2 (Oversold Reversal):
     BUY  when jojo was below 28 and turns upward (today > yesterday)
     SELL when jojo crosses above 51, OR drops below 28 again
 
@@ -127,7 +127,7 @@ def backtest_strategy1(dates, closes, therm_vals, *,
                        stop_loss_pct=None, atr_pct=None, min_atr_pct=None,
                        opens=None) -> list[Trade]:
     """
-    Strategy 1 (超买动量):
+    Strategy 1 (Overbought Momentum):
         BUY:  jojo crosses above 76 (today > 76 AND yesterday <= 76)
         SELL: jojo drops below 68 (today < 68 AND yesterday >= 68)
 
@@ -182,7 +182,7 @@ def backtest_strategy1(dates, closes, therm_vals, *,
                         exit_price=round(exit_price, 2),
                         holding_days=i - entry_idx,
                         pnl_pct=round(pnl, 2),
-                        exit_reason=f"止损({stop_loss_pct}%)",
+                        exit_reason=f"Stop loss ({stop_loss_pct}%)",
                     ))
                     in_position = False
                     continue
@@ -205,7 +205,7 @@ def backtest_strategy1(dates, closes, therm_vals, *,
                     exit_price=round(exit_price, 2),
                     holding_days=exit_idx - entry_idx,
                     pnl_pct=round(pnl, 2),
-                    exit_reason="下穿68",
+                    exit_reason="Crossed below 68",
                 ))
                 in_position = False
 
@@ -220,7 +220,7 @@ def backtest_strategy1(dates, closes, therm_vals, *,
             exit_price=round(exit_price, 2),
             holding_days=len(therm_vals) - 1 - entry_idx,
             pnl_pct=round(pnl, 2),
-            exit_reason="持仓中",
+            exit_reason="Open position",
         ))
 
     return trades
@@ -230,7 +230,7 @@ def backtest_strategy2(dates, closes, therm_vals, *,
                        stop_loss_pct=None, trend_filter=None,
                        opens=None) -> list[Trade]:
     """
-    Strategy 2 (超卖反转):
+    Strategy 2 (Oversold Reversal):
         BUY:  jojo was below 28, then turns up (today > yesterday, yesterday < 28)
         SELL: jojo crosses above 51 OR drops below 28 again
 
@@ -282,7 +282,7 @@ def backtest_strategy2(dates, closes, therm_vals, *,
                         exit_price=round(exit_price, 2),
                         holding_days=i - entry_idx,
                         pnl_pct=round(pnl, 2),
-                        exit_reason=f"止损({stop_loss_pct}%)",
+                        exit_reason=f"Stop loss ({stop_loss_pct}%)",
                     ))
                     in_position = False
                     continue
@@ -305,7 +305,7 @@ def backtest_strategy2(dates, closes, therm_vals, *,
                     exit_price=round(exit_price, 2),
                     holding_days=exit_idx - entry_idx,
                     pnl_pct=round(pnl, 2),
-                    exit_reason="上穿51",
+                    exit_reason="Crossed above 51",
                 ))
                 in_position = False
             # SELL: drop below 28 again → exit at next bar open
@@ -326,7 +326,7 @@ def backtest_strategy2(dates, closes, therm_vals, *,
                     exit_price=round(exit_price, 2),
                     holding_days=exit_idx - entry_idx,
                     pnl_pct=round(pnl, 2),
-                    exit_reason="再次下穿28",
+                    exit_reason="Crossed below 28 again",
                 ))
                 in_position = False
 
@@ -341,7 +341,7 @@ def backtest_strategy2(dates, closes, therm_vals, *,
             exit_price=round(exit_price, 2),
             holding_days=len(therm_vals) - 1 - entry_idx,
             pnl_pct=round(pnl, 2),
-            exit_reason="持仓中",
+            exit_reason="Open position",
         ))
 
     return trades
@@ -429,8 +429,8 @@ def run_backtest(symbol: str, df: pd.DataFrame, therm_vals: np.ndarray = None,
     trades1 = backtest_strategy1(dates, closes, therm_vals, opens=opens)
     trades2 = backtest_strategy2(dates, closes, therm_vals, opens=opens)
 
-    r1 = StrategyResult(symbol=symbol, strategy="超买动量 (76→68)", trades=trades1)
-    r2 = StrategyResult(symbol=symbol, strategy="超卖反转 (28→51)", trades=trades2)
+    r1 = StrategyResult(symbol=symbol, strategy="Overbought Momentum (76->68)", trades=trades1)
+    r2 = StrategyResult(symbol=symbol, strategy="Oversold Reversal (28->51)", trades=trades2)
 
     if not optimized:
         return r1, r2
@@ -453,9 +453,9 @@ def run_backtest(symbol: str, df: pd.DataFrame, therm_vals: np.ndarray = None,
                                       stop_loss_pct=20, trend_filter=sma_filter,
                                       opens=opens)
 
-    r1_opt = StrategyResult(symbol=symbol, strategy="超买动量优化 (止损20%+ATR≥2%)", trades=trades1_opt)
-    r2a_opt = StrategyResult(symbol=symbol, strategy="超卖反转优化A (止损20%+SPX趋势)", trades=trades2a_opt)
-    r2b_opt = StrategyResult(symbol=symbol, strategy="超卖反转优化B (止损20%+个股SMA120)", trades=trades2b_opt)
+    r1_opt = StrategyResult(symbol=symbol, strategy="Overbought Momentum Optimized (Stop loss 20% + ATR>=2%)", trades=trades1_opt)
+    r2a_opt = StrategyResult(symbol=symbol, strategy="Oversold Reversal Optimized A (Stop loss 20% + SPX trend)", trades=trades2a_opt)
+    r2b_opt = StrategyResult(symbol=symbol, strategy="Oversold Reversal Optimized B (Stop loss 20% + Stock SMA120)", trades=trades2b_opt)
 
     return r1, r2, r1_opt, r2a_opt, r2b_opt
 

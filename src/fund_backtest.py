@@ -1,5 +1,5 @@
 """
-jojo_quant 基金回测器 — portfolio-level backtest using jojo signals.
+jojo_quant fund backtester — portfolio-level backtest using jojo signals.
 
 Simulates a fund that:
 1. Scans all stocks daily for jojo buy/sell signals
@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from io import StringIO
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -31,6 +32,8 @@ import yfinance as yf
 
 from indicators import compute_jojo, _rma
 from screener import EXTRA_TICKERS
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ---------------------------------------------------------------------------
 # Config
@@ -715,7 +718,7 @@ def run_fund(data: dict[str, pd.DataFrame],
                 continue
             pnl = (price / pos.entry_price - 1) * 100
             if pnl <= -stop_loss_pct:
-                to_close.append((sym, price, f"止损({stop_loss_pct:.0f}%)"))
+                to_close.append((sym, price, f"Stop loss ({stop_loss_pct:.0f}%)"))
 
         for sym, price, reason in to_close:
             _close_position(sym, price, date, reason)
@@ -735,12 +738,12 @@ def run_fund(data: dict[str, pd.DataFrame],
             sell_reason = None
             if pos.strategy == 1:
                 if j_today < 68 and j_yest >= 68:
-                    sell_reason = "下穿68"
+                    sell_reason = "Crossed below 68"
             elif pos.strategy == 2:
                 if j_today > 51 and j_yest <= 51:
-                    sell_reason = "上穿51"
+                    sell_reason = "Crossed above 51"
                 elif j_today < 28 and j_yest >= 28:
-                    sell_reason = "再次下穿28"
+                    sell_reason = "Crossed below 28 again"
 
             if sell_reason:
                 pending_sells.append((sym, sell_reason))
@@ -806,7 +809,7 @@ def run_fund(data: dict[str, pd.DataFrame],
         for sym, pos in list(positions.items()):
             if last_date in data[sym].index:
                 price = float(data[sym].loc[last_date, "close"])
-                _close_position(sym, price, last_date, "持仓中")
+                _close_position(sym, price, last_date, "Open position")
 
     return snapshots, trades
 
@@ -962,92 +965,92 @@ def print_summary(metrics, config_str):
     m = metrics
     print()
     print("=" * 70)
-    print("  韭韭量化 基金回测结果")
+    print("  韭韭量化 Fund Backtest Results")
     print("=" * 70)
     print(f"  {config_str}")
-    print(f"  回测区间: {m['start_date']} ~ {m['end_date']} ({m['trading_days']} 交易日)")
+    print(f"  Period: {m['start_date']} ~ {m['end_date']} ({m['trading_days']} trading days)")
     print("-" * 70)
-    print(f"  初始资金:       ${m['initial_capital']:>14,.0f}")
-    print(f"  终值:           ${m['final_equity']:>14,.0f}")
-    print(f"  总收益:         {m['total_return']:>13.1f}%")
-    print(f"  年化收益:       {m['ann_return']:>13.1f}%")
-    print(f"  最大回撤:       {m['max_drawdown']:>13.1f}%  ({m['max_dd_date']})")
-    print(f"  Sharpe:         {m['sharpe']:>13.2f}")
-    print(f"  Sortino:        {m['sortino']:>13.2f}")
-    print(f"  Calmar:         {m['calmar']:>13.2f}")
+    print(f"  Initial capital:    ${m['initial_capital']:>14,.0f}")
+    print(f"  Final equity:       ${m['final_equity']:>14,.0f}")
+    print(f"  Total return:       {m['total_return']:>13.1f}%")
+    print(f"  Annual return:      {m['ann_return']:>13.1f}%")
+    print(f"  Max drawdown:       {m['max_drawdown']:>13.1f}%  ({m['max_dd_date']})")
+    print(f"  Sharpe:             {m['sharpe']:>13.2f}")
+    print(f"  Sortino:            {m['sortino']:>13.2f}")
+    print(f"  Calmar:             {m['calmar']:>13.2f}")
     print("-" * 70)
-    print(f"  总交易数:       {m['total_trades']:>13d}")
-    print(f"  胜率:           {m['win_rate']:>13.1f}%")
-    print(f"  盈亏比:         {str(m['profit_factor']):>13s}")
-    print(f"  平均收益:       {m['avg_pnl']:>13.2f}%")
-    print(f"  平均持仓:       {m['avg_holding']:>13.1f} 天")
-    print(f"  最大同时持仓:   {m['max_concurrent']:>13d}")
-    print(f"  资金利用率:     {m['capital_utilization']:>13.1f}%")
+    print(f"  Total trades:       {m['total_trades']:>13d}")
+    print(f"  Win rate:           {m['win_rate']:>13.1f}%")
+    print(f"  Profit factor:      {str(m['profit_factor']):>13s}")
+    print(f"  Avg PnL:            {m['avg_pnl']:>13.2f}%")
+    print(f"  Avg holding:        {m['avg_holding']:>13.1f} days")
+    print(f"  Max concurrent:     {m['max_concurrent']:>13d}")
+    print(f"  Capital util:       {m['capital_utilization']:>13.1f}%")
     print("=" * 70)
 
     # Benchmark comparison
     bench = m.get("benchmark", {})
     if bench:
-        print("\n  业绩基准 (SPX 500 买入持有):")
+        print("\n  Benchmark (SPX 500 buy-and-hold):")
         print("-" * 70)
-        print(f"  SPX 终值:       ${bench['final_equity']:>14,.0f}")
-        print(f"  SPX 总收益:     {bench['total_return']:>13.1f}%")
-        print(f"  SPX 年化收益:   {bench['ann_return']:>13.1f}%")
-        print(f"  SPX 最大回撤:   {bench['max_drawdown']:>13.1f}%  ({bench['max_dd_date']})")
-        print(f"  SPX Sharpe:     {bench['sharpe']:>13.2f}")
+        print(f"  SPX final equity:   ${bench['final_equity']:>14,.0f}")
+        print(f"  SPX total return:   {bench['total_return']:>13.1f}%")
+        print(f"  SPX annual return:  {bench['ann_return']:>13.1f}%")
+        print(f"  SPX max drawdown:   {bench['max_drawdown']:>13.1f}%  ({bench['max_dd_date']})")
+        print(f"  SPX Sharpe:         {bench['sharpe']:>13.2f}")
         alpha = m['ann_return'] - bench['ann_return']
-        print(f"  超额年化(α):    {alpha:>+13.1f}%")
+        print(f"  Excess annual (α):  {alpha:>+13.1f}%")
         print("=" * 70)
 
     # Monthly returns heatmap
     monthly = m.get("monthly_returns")
     if monthly is not None and len(monthly) > 0:
-        print("\n月度收益率 (%) — 策略:")
+        print("\nMonthly returns (%) — Strategy:")
         print("-" * 70)
         mdf = pd.DataFrame({"ret": monthly})
         mdf["year"] = mdf.index.year
         mdf["month"] = mdf.index.month
         pivot = mdf.pivot_table(values="ret", index="year", columns="month", aggfunc="first")
-        pivot.columns = [f"{c:>2d}月" for c in pivot.columns]
+        pivot.columns = [f"{c:>2d}M" for c in pivot.columns]
         yearly = mdf.groupby("year")["ret"].sum()
-        pivot["  年度"] = yearly
+        pivot["  Year"] = yearly
         print(pivot.to_string(float_format=lambda x: f"{x:>6.1f}"))
 
     # Benchmark monthly heatmap
     bench_monthly = bench.get("monthly_returns") if bench else None
     if bench_monthly is not None and len(bench_monthly) > 0:
-        print(f"\n月度收益率 (%) — SPX 基准:")
+        print(f"\nMonthly returns (%) — SPX benchmark:")
         print("-" * 70)
         bmdf = pd.DataFrame({"ret": bench_monthly})
         bmdf["year"] = bmdf.index.year
         bmdf["month"] = bmdf.index.month
         bpivot = bmdf.pivot_table(values="ret", index="year", columns="month", aggfunc="first")
-        bpivot.columns = [f"{c:>2d}月" for c in bpivot.columns]
+        bpivot.columns = [f"{c:>2d}M" for c in bpivot.columns]
         byearly = bmdf.groupby("year")["ret"].sum()
-        bpivot["  年度"] = byearly
+        bpivot["  Year"] = byearly
         print(bpivot.to_string(float_format=lambda x: f"{x:>6.1f}"))
 
     # Drawdown summary
     dd_series = m.get("drawdown_series")
     if dd_series is not None and len(dd_series) > 0:
-        print(f"\n最大回撤 Top 5:")
+        print(f"\nMax drawdown Top 5:")
         print("-" * 70)
         # Find distinct drawdown episodes (peaks)
         dd_monthly = dd_series.resample("ME").max()
         top_dd = dd_monthly.nlargest(5)
         for i, (dt, val) in enumerate(top_dd.items(), 1):
-            print(f"  {i}. {str(dt)[:7]}  回撤 {val:.1f}%")
+            print(f"  {i}. {str(dt)[:7]}  drawdown {val:.1f}%")
     print()
 
 
 def print_comparison(results: list[tuple[str, dict]]):
     """Print comparison table of multiple configurations."""
     print("\n" + "=" * 120)
-    print("  配置对比")
+    print("  Configuration Comparison")
     print("=" * 120)
-    header = (f"{'配置':<35s} {'总收益%':>8s} {'年化%':>7s} {'最大回撤%':>9s} "
-              f"{'Sharpe':>7s} {'Sortino':>8s} {'交易数':>6s} {'胜率%':>6s} "
-              f"{'盈亏比':>7s} {'终值':>14s}")
+    header = (f"{'Config':<35s} {'TotRet%':>8s} {'AnnRet%':>7s} {'MaxDD%':>9s} "
+              f"{'Sharpe':>7s} {'Sortino':>8s} {'Trades':>6s} {'Win%':>6s} "
+              f"{'PF':>7s} {'Final':>14s}")
     print(header)
     print("-" * 120)
     for label, r in results:
@@ -1066,30 +1069,30 @@ def generate_report(metrics, trades, config_str, output_dir="reports"):
     run_date = datetime.now().strftime("%Y-%m-%d")
 
     md = []
-    md.append(f"# 韭韭量化 基金回测报告\n")
-    md.append(f"**生成日期**: {run_date}")
-    md.append(f"**配置**: {config_str}\n")
+    md.append(f"# 韭韭量化 Fund Backtest Report\n")
+    md.append(f"**Generated**: {run_date}")
+    md.append(f"**Config**: {config_str}\n")
 
-    md.append("## 业绩概览\n")
-    md.append("| 指标 | 值 |")
+    md.append("## Performance Overview\n")
+    md.append("| Metric | Value |")
     md.append("|------|------|")
     rows = [
-        ("回测区间", f"{m['start_date']} ~ {m['end_date']}"),
-        ("初始资金", f"${m['initial_capital']:,.0f}"),
-        ("终值", f"${m['final_equity']:,.0f}"),
-        ("总收益", f"{m['total_return']}%"),
-        ("年化收益", f"{m['ann_return']}%"),
-        ("最大回撤", f"{m['max_drawdown']}% ({m['max_dd_date']})"),
+        ("Period", f"{m['start_date']} ~ {m['end_date']}"),
+        ("Initial capital", f"${m['initial_capital']:,.0f}"),
+        ("Final equity", f"${m['final_equity']:,.0f}"),
+        ("Total return", f"{m['total_return']}%"),
+        ("Annual return", f"{m['ann_return']}%"),
+        ("Max drawdown", f"{m['max_drawdown']}% ({m['max_dd_date']})"),
         ("Sharpe", f"{m['sharpe']}"),
         ("Sortino", f"{m['sortino']}"),
         ("Calmar", f"{m['calmar']}"),
-        ("总交易数", f"{m['total_trades']}"),
-        ("胜率", f"{m['win_rate']}%"),
-        ("盈亏比", f"{m['profit_factor']}"),
-        ("平均收益", f"{m['avg_pnl']}%"),
-        ("平均持仓", f"{m['avg_holding']}天"),
-        ("最大同时持仓", f"{m['max_concurrent']}"),
-        ("资金利用率", f"{m['capital_utilization']}%"),
+        ("Total trades", f"{m['total_trades']}"),
+        ("Win rate", f"{m['win_rate']}%"),
+        ("Profit factor", f"{m['profit_factor']}"),
+        ("Avg PnL", f"{m['avg_pnl']}%"),
+        ("Avg holding", f"{m['avg_holding']} days"),
+        ("Max concurrent", f"{m['max_concurrent']}"),
+        ("Capital utilization", f"{m['capital_utilization']}%"),
     ]
     for label, val in rows:
         md.append(f"| {label} | {val} |")
@@ -1097,17 +1100,17 @@ def generate_report(metrics, trades, config_str, output_dir="reports"):
     # Benchmark comparison
     bench = m.get("benchmark", {})
     if bench:
-        md.append("\n## 业绩基准 (SPX 500 买入持有)\n")
-        md.append("| 指标 | 策略 | SPX |")
+        md.append("\n## Benchmark (SPX 500 buy-and-hold)\n")
+        md.append("| Metric | Strategy | SPX |")
         md.append("|------|------|-----|")
-        md.append(f"| 终值 | ${m['final_equity']:,.0f} | ${bench['final_equity']:,.0f} |")
-        md.append(f"| 总收益 | {m['total_return']}% | {bench['total_return']}% |")
-        md.append(f"| 年化收益 | {m['ann_return']}% | {bench['ann_return']}% |")
-        md.append(f"| 最大回撤 | {m['max_drawdown']}% | {bench['max_drawdown']}% |")
+        md.append(f"| Final equity | ${m['final_equity']:,.0f} | ${bench['final_equity']:,.0f} |")
+        md.append(f"| Total return | {m['total_return']}% | {bench['total_return']}% |")
+        md.append(f"| Annual return | {m['ann_return']}% | {bench['ann_return']}% |")
+        md.append(f"| Max drawdown | {m['max_drawdown']}% | {bench['max_drawdown']}% |")
         md.append(f"| Sharpe | {m['sharpe']} | {bench['sharpe']} |")
         md.append(f"| Sortino | {m['sortino']} | {bench['sortino']} |")
         alpha = round(m['ann_return'] - bench['ann_return'], 1)
-        md.append(f"| **超额年化(α)** | **{alpha:+.1f}%** | — |")
+        md.append(f"| **Excess annual (α)** | **{alpha:+.1f}%** | — |")
 
     def _pivot_to_md(monthly_series):
         """Convert monthly return series to markdown table."""
@@ -1118,7 +1121,7 @@ def generate_report(metrics, trades, config_str, output_dir="reports"):
         yearly = mdf.groupby("year")["ret"].sum()
         # Build markdown table manually
         cols = list(pivot.columns)
-        header = "| 年份 | " + " | ".join(f"{c}月" for c in cols) + " | 年度 |"
+        header = "| Year | " + " | ".join(f"{c}M" for c in cols) + " | Year total |"
         sep = "|------|" + "|".join("------:" for _ in cols) + "|------:|"
         rows = [header, sep]
         for yr in pivot.index:
@@ -1133,19 +1136,19 @@ def generate_report(metrics, trades, config_str, output_dir="reports"):
     # Monthly heatmap
     monthly = m.get("monthly_returns")
     if monthly is not None and len(monthly) > 0:
-        md.append("\n## 月度收益率 (%) — 策略\n")
+        md.append("\n## Monthly Returns (%) — Strategy\n")
         md.append(_pivot_to_md(monthly))
 
     bench_monthly = bench.get("monthly_returns") if bench else None
     if bench_monthly is not None and len(bench_monthly) > 0:
-        md.append("\n## 月度收益率 (%) — SPX 基准\n")
+        md.append("\n## Monthly Returns (%) — SPX Benchmark\n")
         md.append(_pivot_to_md(bench_monthly))
 
     # Drawdown top 5
     dd_series = m.get("drawdown_series")
     if dd_series is not None and len(dd_series) > 0:
-        md.append("\n## 最大回撤 Top 5\n")
-        md.append("| # | 月份 | 回撤% |")
+        md.append("\n## Max Drawdown Top 5\n")
+        md.append("| # | Month | Drawdown% |")
         md.append("|---|------|-------|")
         dd_monthly = dd_series.resample("ME").max()
         top_dd = dd_monthly.nlargest(5)
@@ -1155,16 +1158,16 @@ def generate_report(metrics, trades, config_str, output_dir="reports"):
     # Top trades
     if trades:
         sorted_by_pnl = sorted(trades, key=lambda t: t.pnl_dollar, reverse=True)
-        md.append("\n## Top 10 盈利交易\n")
-        md.append("| # | Ticker | 买入 | 卖出 | 持仓天数 | 收益% | 收益$ | 原因 |")
+        md.append("\n## Top 10 Winning Trades\n")
+        md.append("| # | Ticker | Entry | Exit | Holding days | PnL% | PnL$ | Reason |")
         md.append("|---|--------|------|------|----------|-------|-------|------|")
         for i, t in enumerate(sorted_by_pnl[:10], 1):
             md.append(f"| {i} | {t.ticker} | {t.entry_date} @ {t.entry_price} "
                       f"| {t.exit_date} @ {t.exit_price} | {t.holding_days} "
                       f"| {t.pnl_pct:+.2f}% | ${t.pnl_dollar:+,.0f} | {t.exit_reason} |")
 
-        md.append("\n## Top 10 亏损交易\n")
-        md.append("| # | Ticker | 买入 | 卖出 | 持仓天数 | 收益% | 收益$ | 原因 |")
+        md.append("\n## Top 10 Losing Trades\n")
+        md.append("| # | Ticker | Entry | Exit | Holding days | PnL% | PnL$ | Reason |")
         md.append("|---|--------|------|------|----------|-------|-------|------|")
         for i, t in enumerate(sorted_by_pnl[-10:][::-1], 1):
             md.append(f"| {i} | {t.ticker} | {t.entry_date} @ {t.entry_price} "
@@ -1205,9 +1208,9 @@ def export_csv(snapshots, trades, output_dir="reports"):
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="韭韭量化 基金回测器")
+    parser = argparse.ArgumentParser(description="韭韭量化 fund backtester")
     parser.add_argument("--strategy", type=int, default=1, choices=[1, 2, 3],
-                        help="1=超买动量, 2=超卖反转, 3=both (default: 1)")
+                        help="1=Overbought Momentum, 2=Oversold Reversal, 3=both (default: 1)")
     parser.add_argument("--universe", type=str, default="sp500",
                         choices=["sp500", "sp500+", "report", "custom"],
                         help="Stock universe (default: sp500)")
@@ -1231,12 +1234,12 @@ def main():
                         help="ATR%% inverse position sizing (lower vol = bigger position)")
     parser.add_argument("--compare", action="store_true",
                         help="Run 4 configs and compare: base / +regime / +vol / +both")
-    parser.add_argument("--cache-dir", type=str, default="data/",
-                        help="Cache directory for OHLC data (default: data/)")
+    parser.add_argument("--cache-dir", type=str, default=str(REPO_ROOT / "data"),
+                        help="Cache directory for OHLC data (default: <repo>/data/)")
     parser.add_argument("--no-cache", action="store_true",
                         help="Force re-download (skip cache)")
-    parser.add_argument("--output-dir", type=str, default="reports/",
-                        help="Output directory (default: reports/)")
+    parser.add_argument("--output-dir", type=str, default=str(REPO_ROOT / "reports"),
+                        help="Output directory (default: <repo>/reports/)")
     parser.add_argument("--rank-method", type=str, default="pf",
                         choices=["pf", "mktcap", "mktcap_asc", "jojo", "jojo_asc"],
                         help="Ranking method: pf, mktcap (large first), mktcap_asc (small first), jojo (high first), jojo_asc (low first)")
@@ -1246,11 +1249,11 @@ def main():
                         help="Use historical S&P 500 membership (avoid survivorship bias)")
     args = parser.parse_args()
 
-    strat_names = {1: "策略1(超买动量)", 2: "策略2(超卖反转)", 3: "策略1+2(全部)"}
-    pf_label = f"滚动PF({args.pf_window}天)" if args.pf_window > 0 else "全量PF"
+    strat_names = {1: "Strategy 1 (Overbought Momentum)", 2: "Strategy 2 (Oversold Reversal)", 3: "Strategy 1+2 (all)"}
+    pf_label = f"Rolling PF ({args.pf_window} days)" if args.pf_window > 0 else "Full PF"
 
     print("=" * 70)
-    print("  韭韭量化 基金回测器")
+    print("  韭韭量化 Fund Backtester")
     print("=" * 70)
     print()
 
@@ -1291,7 +1294,7 @@ def main():
         regime = build_regime_series(spx_df)
         if len(regime) > 0:
             current = regime.iloc[-1]
-            print(f"  Current regime: {'牛市' if current == 'bull' else '熊市'}")
+            print(f"  Current regime: {'Bull' if current == 'bull' else 'Bear'}")
 
     # Step 5: Run
     common_kwargs = dict(
@@ -1329,9 +1332,9 @@ def main():
 
         top_ns = [3, 5, 8, 10]
         rank_methods = [
-            ("滚动PF", "pf"),
-            ("市值", "mktcap"),
-            ("jojo指标", "jojo"),
+            ("Rolling PF", "pf"),
+            ("Market cap", "mktcap"),
+            ("jojo indicator", "jojo"),
         ]
 
         comparison = []
@@ -1381,10 +1384,10 @@ def main():
             shared_static_pf = compute_historical_pf(data, jojo_cache, args.strategy)
 
         configs = [
-            ("基线 (滚动PF+等权)", dict(regime_filter=False, vol_sizing=False)),
-            ("+熊市减仓", dict(regime=regime, regime_filter=True, vol_sizing=False)),
-            ("+ATR%动态仓位", dict(regime_filter=False, vol_sizing=True)),
-            ("+熊市减仓+ATR%动态仓位", dict(regime=regime, regime_filter=True, vol_sizing=True)),
+            ("Baseline (Rolling PF + equal weight)", dict(regime_filter=False, vol_sizing=False)),
+            ("+Bear regime reduction", dict(regime=regime, regime_filter=True, vol_sizing=False)),
+            ("+ATR% dynamic sizing", dict(regime_filter=False, vol_sizing=True)),
+            ("+Bear regime reduction + ATR% dynamic sizing", dict(regime=regime, regime_filter=True, vol_sizing=True)),
         ]
         comparison = []
         best_snapshots, best_trades, best_metrics, best_label = None, None, None, None
@@ -1417,10 +1420,10 @@ def main():
         export_csv(best_snapshots, best_trades, args.output_dir)
     else:
         config_str = (f"{strat_names[args.strategy]} | {args.universe} | {pf_label} | "
-                      f"资金${args.capital:,.0f} | 最大{args.max_positions}仓 | "
-                      f"止损{args.stop_loss}%"
-                      + (" | 熊市减仓" if args.regime_filter else "")
-                      + (" | ATR%动态仓位" if args.vol_sizing else ""))
+                      f"Capital ${args.capital:,.0f} | Max {args.max_positions} positions | "
+                      f"Stop loss {args.stop_loss}%"
+                      + (" | Bear regime reduction" if args.regime_filter else "")
+                      + (" | ATR% dynamic sizing" if args.vol_sizing else ""))
 
         print(f"\n[4/5] Running fund simulation...")
         extra_kwargs = {}
