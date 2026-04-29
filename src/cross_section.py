@@ -409,7 +409,8 @@ def _format_row(rank_idx: int, row: pd.Series) -> str:
     score_str = "inf" if isinstance(score, float) and math.isinf(score) else f"{score:.2f}"
     return (f"| {rank_idx} | {row['ticker']} | {int(row['trades'])} | "
             f"{row['win_rate']:.1f} | {row['total_pnl']:+.1f} | "
-            f"{pf_str} | {row['max_dd']:.1f} | {score_str} |")
+            f"{pf_str} | {row['max_dd']:.1f} | "
+            f"{row['avg_holding']:.1f} | {score_str} |")
 
 
 def render_markdown(main_rank: pd.DataFrame, perfect: pd.DataFrame,
@@ -486,9 +487,9 @@ def render_markdown(main_rank: pd.DataFrame, perfect: pd.DataFrame,
             parts.append(f"\n### {regime}  (top {len(sub)} by score, "
                          f"min trades={MIN_TRADES_DEFAULT})\n")
             parts.append("| rank | ticker | trades | win% | total_pnl% | "
-                         "pf | max_dd% | score |")
+                         "pf | max_dd% | avg_hold (d) | score |")
             parts.append("|------|--------|--------|------|------------|"
-                         "----|---------|-------|")
+                         "----|---------|--------------|-------|")
             for i, (_, row) in enumerate(sub.iterrows(), start=1):
                 parts.append(_format_row(i, row))
 
