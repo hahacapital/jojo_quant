@@ -215,14 +215,13 @@ Bot is already in the target group.
 (no signals → "今日策略 2 无符合 top-30 排名的信号。" omitted entirely if both empty)
 ```
 
-If both strategies have zero alerts, the message body is simply `今日无符合 top-30 排名的信号。` — only sent when `--force` is set; otherwise the script exits silently.
+If both strategies have zero alerts, the script exits silently (exit code 0). No "no signals" message is sent — Telegram inbox stays clean on quiet days.
 
 ## CLI
 
 ```bash
-python3 src/daily_alert.py                  # default: send Telegram
+python3 src/daily_alert.py                  # default: send Telegram (silent if no signals)
 python3 src/daily_alert.py --dry-run        # build message, print, do not POST
-python3 src/daily_alert.py --force          # send "no signals" message instead of skipping
 python3 src/daily_alert.py --top 50         # override top-N filter
 python3 src/daily_alert.py --skip-fresh-check  # bypass SPX freshness gate (testing only)
 ```
@@ -230,13 +229,12 @@ python3 src/daily_alert.py --skip-fresh-check  # bypass SPX freshness gate (test
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `--dry-run` | False | Print the rendered message; no Telegram POST |
-| `--force` | False | Send "no signals" message instead of silent exit |
 | `--top N` | 30 | Top-N cutoff for the ranking filter |
 | `--skip-fresh-check` | False | Bypass the SPX freshness gate (testing only) |
 
 ## Exit codes
 
-- `0` — normal (alert sent, or no signals + no `--force`).
+- `0` — normal (alert sent, or zero signals → silent exit).
 - `1` — SPX freshness gate failed (data not yet updated).
 - `2` — Telegram send failed (after retry).
 - `3` — Misconfig (missing env vars, no cross_section CSV, etc.).
@@ -259,7 +257,7 @@ Add to `src/test_logic.py`:
 2. `test_md_escape_special_chars` — `_md_escape` covers `._()+!` and other MarkdownV2 specials.
 3. `test_expected_last_us_trading_day_returns_business_day` — sanity that the helper returns a US business day on or before today.
 4. `test_load_env_reads_dotenv` — env-var override + `.env` fallback parsing.
-5. `test_format_message_no_alerts_returns_empty_or_force` — silent vs `--force` paths.
+5. `test_main_silent_on_zero_alerts` — when both S1/S2 alerts are empty, `main()` exits 0 without invoking `send_telegram`.
 
 Smoke: `python3 src/daily_alert.py --dry-run --skip-fresh-check` produces a valid MarkdownV2 string and prints it.
 
