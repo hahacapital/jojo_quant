@@ -81,6 +81,21 @@ python3 src/cross_section.py --strategy 1 --no-push
 python3 src/cross_section.py --limit 5 --no-push
 ```
 
+### Daily Telegram alert
+
+```bash
+# Default: scan, filter, send Telegram (silent if no qualifying signals)
+python3 src/daily_alert.py
+
+# Dry-run (build + print message only)
+python3 src/daily_alert.py --dry-run
+
+# Override top-N cutoff
+python3 src/daily_alert.py --top 50
+```
+
+Requires `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` in env or `<repo>/.env` (gitignored). Reads the latest `reports/cross_section_*.csv` for ranking. Aborts with exit code 1 if today's SPX bar is not yet on yfinance.
+
 ### Tests and debugging
 
 ```bash
@@ -154,6 +169,7 @@ Module responsibilities and data flow:
 - **`src/backtest.py`** — exposes `backtest_strategy1()` / `backtest_strategy2()` (numpy-vectorised simulation) and the orchestration helper `run_backtest()` (download → indicator → strategy → split metrics by market regime). Called by `screener.py` and `generate_report.py`.
 - **`src/screener.py`** — daily-scan entry point: `yfinance` bulk OHLC download → `compute_jojo` → today's signal filter → `run_backtest()` adds historical metrics (full + current-regime subset) → ranked output.
 - **`src/cross_section.py`** — cross-section backtest: `build_universe()` returns cache ∩ Wikipedia large-cap membership; `build_regimes()` computes SPX trend (SMA50/200/225) × 5-year rolling vol-rank → 9 buckets; each stock runs `run_backtest`, trades aggregate by entry-date regime, ranked by `score = pf × √trades`. GitHub push only.
+- **`src/daily_alert.py`** — daily post-close Telegram alert. Reuses `screener.scan_signals` for today's S1/S2 signals and `cross_section.{load_or_fetch_spx, build_regimes}` for today's 9-bucket regime; filters signals down to tickers in the top-30 of the latest `reports/cross_section_*.csv` row for that regime; renders a Chinese MarkdownV2 message with FMP company info and POSTs to Telegram. Aborts cleanly if SPX is not yet updated on yfinance.
 - **Regime decision:** `^GSPC` close vs SMA(225) for the screener / generate_report path. `cross_section.py` uses a finer 9-bucket regime (3 trend states × 3 vol buckets).
 
 ## Project files
@@ -165,6 +181,7 @@ Module responsibilities and data flow:
 | `src/indicators.py` | jojo indicator computation (pure pandas/numpy, no I/O) |
 | `src/generate_report.py` | Batch backtest report generator (default: push GitHub + S3) |
 | `src/cross_section.py` | Cross-section backtest: rank S1/S2 per stock across 9 SPX trend × vol regimes |
+| `src/daily_alert.py` | Post-close Telegram alert filtering today's jojo signals by cross-section top-30 of the current regime |
 | `src/test_logic.py` | Assert-based backtest logic tests (project's only test entry point) |
 | `src/validate.py` | Cross-checks jojo against TradingView CSVs |
 | `src/debug_indicators.py` | Per-sub-indicator diagnostics |
@@ -184,6 +201,7 @@ pip install -r requirements.txt
 - **yfinance:** anonymous access, no API key.
 - **FMP** (company profiles): rate-limited; failures degrade to empty profile and never block the pipeline.
 - **Wikipedia:** scraped for Russell 1000 + S&P 500 membership by `cross_section.py` and cached into `data/index_members.json` after the first successful fetch.
+- **Telegram Bot API:** `daily_alert.py` POSTs to `api.telegram.org`. Credentials read from environment or the gitignored `<repo>/.env`. Bot must be added to the target chat first; group chat IDs may be negative.
 
 ## `reports/` policy
 

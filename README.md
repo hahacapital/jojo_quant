@@ -117,6 +117,40 @@ pf = inf groups → separate "perfect-record" listing
 - The first run scrapes Russell 1000 + S&P 500 membership from Wikipedia into `data/index_members.json`.
 - GitHub push only (no S3).
 
+## Daily alert (`daily_alert.py`)
+
+After each US trading day's close, sends a Telegram message listing today's jojo Strategy 1 / Strategy 2 signals — but only for tickers ranked in the top-30 of the latest cross-section CSV for the current 9-bucket SPX regime.
+
+```bash
+# Default: scan, filter, send Telegram (silent if no qualifying signals)
+python3 src/daily_alert.py
+
+# Build the message and print it; do not POST to Telegram
+python3 src/daily_alert.py --dry-run
+
+# Override top-N cutoff (default 30)
+python3 src/daily_alert.py --top 50
+```
+
+### Setup
+
+1. Create a Telegram bot via `@BotFather` and add it to your target chat.
+2. Copy `.env.example` to `.env` and fill in `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (`.env` is gitignored).
+3. Make sure a recent `reports/cross_section_*.csv` exists; the alert reads the latest one.
+4. Optional: configure cron to run after each US close. Beijing 09:00 Tue–Sat (machine TZ = `Asia/Shanghai`):
+
+   ```
+   0 9 * * 2-6 cd /home/yixiang/jojo_quant && /usr/bin/python3 src/daily_alert.py >> logs/daily_alert.log 2>&1
+   ```
+
+   If the machine is on UTC, use `0 1 * * 2-6` (UTC 01:00 = Beijing 09:00).
+
+### Behaviour notes
+
+- If yfinance has not yet published today's SPX bar, the script exits with code 1 and sends nothing — re-run later or rely on the next cron tick.
+- If both strategies have zero qualifying signals, the script exits silently (no "no signals" message — quiet days stay quiet).
+- Company info comes live from FMP (one request per alerted ticker); commodity futures use a hardcoded name fallback.
+
 ## `reports/` policy
 
 `reports/` is committed to git as the published, browsable archive.

@@ -117,6 +117,40 @@ pf = inf 组 → 单独 "perfect-record" 列表
 - 首次运行会从 Wikipedia 抓 Russell 1000 + S&P 500 成分到 `data/index_members.json`
 - 仅推 GitHub，不推 S3
 
+## 每日提醒 (daily_alert.py)
+
+每个美股交易日收盘后，把当日 jojo Strategy 1 / Strategy 2 信号过滤到 cross-section 当前 9 桶 regime 下 top-30 的票，通过 Telegram 推送。
+
+```bash
+# 默认：扫描 + 过滤 + 发 Telegram（无信号则静默退出）
+python3 src/daily_alert.py
+
+# 仅本地预览消息，不发 Telegram
+python3 src/daily_alert.py --dry-run
+
+# 调整 top-N（默认 30）
+python3 src/daily_alert.py --top 50
+```
+
+### 配置
+
+1. 通过 `@BotFather` 创建 Telegram bot，加入目标群。
+2. 复制 `.env.example` 为 `.env` 并填入 `TELEGRAM_BOT_TOKEN` 与 `TELEGRAM_CHAT_ID`（`.env` 已 gitignored）。
+3. 确认 `reports/cross_section_*.csv` 存在；脚本读最新一个。
+4. 可选：cron 配置为每个美股收盘后跑。机器时区 = `Asia/Shanghai` 时北京 09:00 Tue–Sat：
+
+   ```
+   0 9 * * 2-6 cd /home/yixiang/jojo_quant && /usr/bin/python3 src/daily_alert.py >> logs/daily_alert.log 2>&1
+   ```
+
+   机器时区 = UTC 时改为 `0 1 * * 2-6`（UTC 01:00 = 北京 09:00）。
+
+### 行为说明
+
+- 若 yfinance 当日 SPX 数据未更新，脚本以退出码 1 中止，不发消息——稍后手动重跑或等下一次 cron。
+- 若 S1 和 S2 都没有符合 top-30 的信号，脚本静默退出（不发"无信号"消息——安静日就让它安静）。
+- 公司信息实时从 FMP 拉取（每个 alert ticker 一次请求）；商品期货使用本地硬编码名称回退。
+
 ## `reports/` 维护策略
 
 `reports/` 进入 git，作为对外可浏览的归档。
