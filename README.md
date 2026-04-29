@@ -29,10 +29,6 @@ python3 src/generate_report.py
 python3 src/cross_section.py
 python3 src/cross_section.py --strategy 1 --no-push
 python3 src/cross_section.py --limit 5 --no-push   # smoke test
-
-# Fund-level backtest (Top-N portfolio)
-python3 src/fund_backtest.py --strategy 1 --universe sp500+
-python3 src/fund_backtest.py --compare --universe sp500+   # 4-way config comparison
 ```
 
 > All Python source lives under `src/`. The repo root keeps only `jojo.pine`, the documentation files, and the data / reports / logs directories.
@@ -47,7 +43,6 @@ python3 src/fund_backtest.py --compare --universe sp500+   # 4-way config compar
 | `src/backtest.py` | Historical backtest engine, with optimised variants (stop loss + trend filter + volatility filter) |
 | `src/generate_report.py` | Batch backtest report generator (bull/bear regime split, pushes to GitHub + S3) |
 | `src/cross_section.py` | Cross-section backtest: per-stock S1/S2 ranking across 9 SPX trend × vol regimes (GitHub push only) |
-| `src/fund_backtest.py` | Top-N portfolio simulator with rolling-PF ranking, optional bear-market hedge / ATR%-based sizing |
 | `src/data_loader.py` · `src/download_ohlc.py` | Local OHLC parquet cache (one file per ticker) |
 | `src/test_logic.py` | The project's only test entry point (assert-based, no pytest configuration) |
 | `data/` · `reports/` · `logs/` | Cache, generated reports, run logs (all gitignored) |
@@ -67,39 +62,6 @@ Each signal includes: basic info (ticker, English name, Chinese name, industry, 
 
 - **Stocks:** every NASDAQ + NYSE listing (~6000+).
 - **Commodity futures:** Gold (`GC=F`), Silver (`SI=F`), Crude Oil (`CL=F`), Natural Gas (`NG=F`), Copper (`HG=F`), Platinum (`PL=F`).
-
-## Fund backtest (`fund_backtest`)
-
-Simulates a Top-N portfolio fund that scans daily for jojo buy/sell signals and manages positions automatically (entries, exits, stop loss).
-
-### Core features
-
-1. **Multiple ranking methods** — largest / mid / smallest market cap, jojo value, rolling profit factor.
-2. **Historical S&P 500 membership** — reconstructs constituents from Wikipedia change tables to remove survivorship bias.
-3. **SPX benchmark comparison** — alpha vs SPX, monthly heatmap, drawdown analysis.
-4. **Optional features** — bear-market sizing reduction, ATR%-based dynamic sizing, configurable stop loss and position count.
-
-### Backtest results (historical constituents, no survivorship bias)
-
-| Configuration | Annual % | Max DD % | Sharpe |
-|---------------|---------:|---------:|-------:|
-| Top 10 by largest market cap | +7.3 | 25.3 | 0.55 |
-| Top 10 by mid market cap | +1.8 | 34.9 | 0.19 |
-| Top 10 by smallest market cap | +0.3 | 38.9 | 0.10 |
-| SPX benchmark | +10.8 | 33.9 | 0.66 |
-
-> **Note:** running with current constituents inflates small-cap returns dramatically due to survivorship bias (Top 1 smallest market cap drops from +38.5% to -13.7% once you switch). Always pass `--historical`.
-
-```bash
-# Compare ranking method × Top-N (recommended with --historical)
-python3 src/fund_backtest.py --rank-compare --universe sp500+ --historical
-
-# 4-way comparison (baseline / bear hedge / ATR sizing / both stacked)
-python3 src/fund_backtest.py --compare --universe sp500+
-
-# Single configuration
-python3 src/fund_backtest.py --strategy 1 --universe sp500+ --max-positions 10 --rank-method mktcap --historical
-```
 
 ## Cross-section backtest (`cross_section.py`)
 

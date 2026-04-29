@@ -92,9 +92,6 @@ python3 src/validate.py
 
 # Print each jojo sub-indicator (RSI / WR / CMO / KD / TSI / ADX) for a ticker
 python3 src/debug_indicators.py
-
-# Compare 4 fund ranking methods
-python3 src/compare_ranking.py
 ```
 
 ## Strategies
@@ -168,8 +165,6 @@ Module responsibilities and data flow:
 | `src/indicators.py` | jojo indicator computation (pure pandas/numpy, no I/O) |
 | `src/generate_report.py` | Batch backtest report generator (default: push GitHub + S3) |
 | `src/cross_section.py` | Cross-section backtest: rank S1/S2 per stock across 9 SPX trend × vol regimes |
-| `src/fund_backtest.py` | Fund portfolio backtester (internal tool, supports `--universe sp500/sp500+/report/custom`, `--historical` for survivorship-bias-free runs, `--compare` for multi-config comparison; outputs `fund_equity.csv` / `fund_trades.csv`) |
-| `src/compare_ranking.py` | Compares the 4 fund-ranking methods |
 | `src/test_logic.py` | Assert-based backtest logic tests (project's only test entry point) |
 | `src/validate.py` | Cross-checks jojo against TradingView CSVs |
 | `src/debug_indicators.py` | Per-sub-indicator diagnostics |
@@ -188,7 +183,7 @@ pip install -r requirements.txt
 - **S3:** `generate_report.py` uploads to `s3://staking-ledger-bpt/jojo_quant/reports/` (path hard-coded). Requires the AWS CLI and matching IAM credentials. `cross_section.py` does **not** use S3. Both scripts skip publishing with `--no-push` (and `--no-s3` for `generate_report.py`).
 - **yfinance:** anonymous access, no API key.
 - **FMP** (company profiles): rate-limited; failures degrade to empty profile and never block the pipeline.
-- **Wikipedia:** scraped for Russell 1000 + S&P 500 membership (`cross_section.py`) and historical S&P 500 changes (`fund_backtest.py --historical`). The cross-section path caches into `data/index_members.json` after the first successful fetch.
+- **Wikipedia:** scraped for Russell 1000 + S&P 500 membership by `cross_section.py` and cached into `data/index_members.json` after the first successful fetch.
 
 ## `reports/` policy
 

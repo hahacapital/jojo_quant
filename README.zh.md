@@ -29,10 +29,6 @@ python3 src/generate_report.py
 python3 src/cross_section.py
 python3 src/cross_section.py --strategy 1 --no-push
 python3 src/cross_section.py --limit 5 --no-push   # 烟雾测试
-
-# 基金回测（Top5 组合）
-python3 src/fund_backtest.py --strategy 1 --universe sp500+
-python3 src/fund_backtest.py --compare --universe sp500+   # 对比4种配置
 ```
 
 > 所有 Python 源码已统一放在 `src/` 目录下；项目根目录只保留 `jojo.pine`、文档和数据/报告目录。
@@ -47,7 +43,6 @@ python3 src/fund_backtest.py --compare --universe sp500+   # 对比4种配置
 | `src/backtest.py` | 历史回测引擎，支持优化版策略（止损+趋势过滤+波动率过滤） |
 | `src/generate_report.py` | 批量回测报告生成（牛熊市分别统计，推送 GitHub + S3） |
 | `src/cross_section.py` | 横截面回测：按 9 个 SPX 趋势 × 波动率 regime 排名每股 S1/S2 表现（仅推 GitHub） |
-| `src/fund_backtest.py` | 基金组合回测（Top5 持仓，滚动 PF 排名选股，支持熊市减仓 / ATR% 动态仓位） |
 | `src/data_loader.py` · `src/download_ohlc.py` | 本地 OHLC 缓存读写（parquet 每股一份） |
 | `src/test_logic.py` | 项目唯一测试入口（基于 assert，无 pytest 配置） |
 | `data/` · `reports/` · `logs/` | 缓存数据、生成报告、运行日志（均已 gitignore） |
@@ -67,39 +62,6 @@ python3 src/fund_backtest.py --compare --universe sp500+   # 对比4种配置
 
 - **股票**: NASDAQ + NYSE 全部（约 6000+）
 - **商品期货**: 黄金(GC=F), 白银(SI=F), 原油(CL=F), 天然气(NG=F), 铜(HG=F), 铂金(PL=F)
-
-## 基金回测 (fund_backtest)
-
-模拟一个 Top-N 持仓基金组合，每日扫描 jojo 买入/卖出信号，自动选股、开仓、止损。
-
-### 核心功能
-
-1. **多种排名方式**：市值最大/中间/最小、jojo 指标值、滚动 Profit Factor
-2. **历史 S&P 500 成分股**：从 Wikipedia 变更表重建当时的成分股，消除幸存者偏差
-3. **SPX 基准对比**：自动计算超额收益(α)、月度热力图、回撤分析
-4. **可选配置**：熊市减仓、ATR% 动态仓位、止损比例、持仓数量
-
-### 回测结果（历史成分股，无幸存者偏差）
-
-| 配置 | 年化% | 最大回撤% | Sharpe |
-|------|-------|-----------|--------|
-| Top10 市值最大 | +7.3 | 25.3 | 0.55 |
-| Top10 市值中间 | +1.8 | 34.9 | 0.19 |
-| Top10 市值最小 | +0.3 | 38.9 | 0.10 |
-| SPX 基准 | +10.8 | 33.9 | 0.66 |
-
-> **注意**：使用当前成分股回测会因幸存者偏差严重高估小盘股收益（Top1 市值最小从 +38.5% 降至 -13.7%）。务必使用 `--historical` 标志。
-
-```bash
-# 排名方式 × TopN 对比（推荐加 --historical）
-python3 src/fund_backtest.py --rank-compare --universe sp500+ --historical
-
-# 4 种配置对比（基线 / 熊市减仓 / ATR% 动态仓位 / 全部叠加）
-python3 src/fund_backtest.py --compare --universe sp500+
-
-# 单独运行
-python3 src/fund_backtest.py --strategy 1 --universe sp500+ --max-positions 10 --rank-method mktcap --historical
-```
 
 ## 横截面回测 (cross_section.py)
 

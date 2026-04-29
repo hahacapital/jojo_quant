@@ -176,57 +176,6 @@ def test_atr_uses_rma():
 
 
 # ============================================================
-# Test 6: Fund backtest next-day execution
-# ============================================================
-def test_fund_next_day_execution():
-    """Verify fund simulation executes buy/sell orders at next-day open."""
-    from fund_backtest import run_fund, precompute_jojo, precompute_atr_pct
-
-    # Create synthetic data for 2 stocks with clear signals
-    n = 80
-    dates = pd.bdate_range("2024-01-01", periods=n)
-
-    # Stock A: jojo crosses above 76 on day 40
-    close_a = np.full(n, 50.0)
-    open_a = np.full(n, 50.0)
-    open_a[41] = 52.0  # next day open after signal
-    df_a = pd.DataFrame({
-        "open": open_a, "high": close_a * 1.02,
-        "low": close_a * 0.98, "close": close_a,
-    }, index=dates)
-
-    data = {"TESTA": df_a}
-
-    # Pre-compute jojo, then manually override values for clear signal
-    jojo_cache = precompute_jojo(data)
-    # Override jojo values to create a clear buy signal
-    jojo_vals = pd.Series(np.full(n, 70.0), index=dates)
-    jojo_vals.iloc[40] = 77.0  # cross above 76 (prev=70)
-    jojo_cache["TESTA"] = jojo_vals
-
-    atr_cache = precompute_atr_pct(data)
-    # Override ATR to pass filter
-    atr_cache["TESTA"] = pd.Series(np.full(n, 3.0), index=dates)
-
-    snapshots, trades = run_fund(
-        data=data, jojo_cache=jojo_cache, atr_cache=atr_cache,
-        strategy=1, max_positions=5, stop_loss_pct=20,
-        initial_capital=100000, start_date="2024-01-01",
-        pf_window=0,
-    )
-
-    if trades:
-        t = trades[0]
-        # Entry should be at day 41's open (52.0), not day 40's close (50.0)
-        assert t.entry_price == 52.0, (
-            f"Fund entry should be at next-day open (52.0), got {t.entry_price}"
-        )
-        print(f"  PASS: Fund entry at next-day open ({t.entry_price})")
-    else:
-        print("  WARN: No trades generated in fund test (signal may not have fired)")
-
-
-# ============================================================
 # Test 7: run_backtest with real-ish data (end-to-end)
 # ============================================================
 def test_run_backtest_e2e():
@@ -596,7 +545,6 @@ if __name__ == "__main__":
         ("Stop loss at close", test_stop_loss_at_close),
         ("Signal at last bar", test_signal_at_last_bar),
         ("ATR uses RMA", test_atr_uses_rma),
-        ("Fund next-day exec", test_fund_next_day_execution),
         ("E2E backtest", test_run_backtest_e2e),
         ("Screener stop loss", test_screener_stop_loss_state),
         ("SPX cache roundtrip", test_spx_cache_roundtrip),
