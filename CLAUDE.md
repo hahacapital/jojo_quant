@@ -189,3 +189,12 @@ pip install -r requirements.txt
 - **yfinance:** anonymous access, no API key.
 - **FMP** (company profiles): rate-limited; failures degrade to empty profile and never block the pipeline.
 - **Wikipedia:** scraped for Russell 1000 + S&P 500 membership (`cross_section.py`) and historical S&P 500 changes (`fund_backtest.py --historical`). The cross-section path caches into `data/index_members.json` after the first successful fetch.
+
+## `reports/` policy
+
+`reports/` is committed to git and serves as the published, browsable archive of full historical runs.
+
+- **Only commit full-universe runs.** No `--limit` smoke tests, no debugging slices.
+- **Update cadence:** monthly. Each month's full run replaces (or sits alongside) the prior month's file with a new dated filename.
+- Smoke tests should always pass `--no-push` so they never reach `reports/` on disk for git, or they should be deleted before commit.
+- If a partial / smoke-test report is committed by mistake, delete it from `reports/` and push the deletion. The data is reproducible from the cache.
