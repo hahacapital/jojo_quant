@@ -168,6 +168,20 @@ def check_spx_fresh(spx: pd.DataFrame) -> None:
         sys.exit(EXIT_SPX_STALE)
 
 
+def compute_today_regime() -> tuple[str, pd.Timestamp]:
+    """Return (regime_label, date) for today using cross_section's classifier.
+
+    Forces a yfinance re-fetch (max_staleness_days=0) so each daily run sees
+    the latest SPX bar. After fetching, runs check_spx_fresh which will
+    sys.exit(EXIT_SPX_STALE) if data is still behind.
+    """
+    spx = cross_section.load_or_fetch_spx(max_staleness_days=0)
+    check_spx_fresh(spx)
+    regimes = cross_section.build_regimes(spx)
+    last_date = regimes.index[-1]
+    return str(regimes.loc[last_date, "regime"]), last_date
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",
