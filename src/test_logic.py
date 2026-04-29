@@ -531,6 +531,45 @@ def test_rank_filters_and_splits():
 
 
 # ============================================================
+# Test: daily_alert.load_env reads from env then .env file
+# ============================================================
+def test_load_env_reads_dotenv():
+    """load_env() prefers process env, falls back to .env file."""
+    import os
+    import tempfile
+    from pathlib import Path
+    import daily_alert
+
+    # Case 1: both from environment
+    os.environ["TELEGRAM_BOT_TOKEN"] = "envtok"
+    os.environ["TELEGRAM_CHAT_ID"] = "envchat"
+    try:
+        token, chat_id = daily_alert.load_env()
+        assert token == "envtok" and chat_id == "envchat"
+    finally:
+        del os.environ["TELEGRAM_BOT_TOKEN"]
+        del os.environ["TELEGRAM_CHAT_ID"]
+
+    # Case 2: env missing, .env file provides them
+    with tempfile.TemporaryDirectory() as td:
+        original = daily_alert.ENV_PATH
+        daily_alert.ENV_PATH = Path(td) / ".env"
+        daily_alert.ENV_PATH.write_text(
+            'TELEGRAM_BOT_TOKEN=filetok\nTELEGRAM_CHAT_ID="filechat"\n'
+        )
+        try:
+            os.environ.pop("TELEGRAM_BOT_TOKEN", None)
+            os.environ.pop("TELEGRAM_CHAT_ID", None)
+            token, chat_id = daily_alert.load_env()
+            assert token == "filetok"
+            assert chat_id == "filechat"
+        finally:
+            daily_alert.ENV_PATH = original
+
+    print("  PASS: load_env reads env then .env")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -555,6 +594,7 @@ if __name__ == "__main__":
         ("classify_trades", test_classify_trades_tags_entry_regime),
         ("Aggregate metrics", test_aggregate_metrics),
         ("rank filters + splits", test_rank_filters_and_splits),
+        ("daily_alert load_env", test_load_env_reads_dotenv),
     ]
 
     passed = 0

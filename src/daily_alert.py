@@ -59,6 +59,40 @@ EXIT_TELEGRAM = 2
 EXIT_CONFIG = 3
 
 
+# ---------------------------------------------------------------------------
+# Env loading
+# ---------------------------------------------------------------------------
+
+def load_env() -> tuple[str, str]:
+    """Return (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID).
+
+    Order: process environment first, then .env file fallback.
+    Raises RuntimeError if either is still missing afterwards.
+    """
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+
+    if (not token or not chat_id) and ENV_PATH.exists():
+        for line in ENV_PATH.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if k == "TELEGRAM_BOT_TOKEN" and not token:
+                token = v
+            elif k == "TELEGRAM_CHAT_ID" and not chat_id:
+                chat_id = v
+
+    if not token or not chat_id:
+        raise RuntimeError(
+            "Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID. "
+            "Set them in the environment or in <repo>/.env."
+        )
+    return token, chat_id
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",
