@@ -410,6 +410,46 @@ def send_chunked(token: str, chat_id: str, text: str,
         send_telegram(token, chat_id, c)
 
 
+def _build_alert_record(row: pd.Series, *, strategy: str, regime: str,
+                        csv_df: pd.DataFrame) -> dict | None:
+    """Combine signal row + CSV historical metrics + FMP info → alert dict.
+
+    Returns None if no matching CSV row is found (defensive — should not
+    happen because the universe is the CSV's tickers).
+    """
+    ticker = str(row["ticker"])
+    sub = csv_df[
+        (csv_df["ticker"] == ticker)
+        & (csv_df["strategy"] == strategy)
+        & (csv_df["regime"] == regime)
+    ]
+    if sub.empty:
+        return None
+    csv_row = sub.iloc[0]
+    info = fetch_company_info(ticker)
+    rec: dict = {
+        "ticker": ticker,
+        "name": info["name"],
+        "sector": info["sector"],
+        "industry": info["industry"],
+        "description": info["description"],
+        "jojo": float(row["jojo"]),
+        "prev": float(row["prev"]),
+        "regime": regime,
+        "bt_trades": int(csv_row["trades"]),
+        "bt_win_rate": float(csv_row["win_rate"]),
+        "bt_total_pnl": float(csv_row["total_pnl"]),
+        "bt_avg_holding": float(csv_row["avg_holding"]),
+    }
+    pf = csv_row["pf"]
+    rec["bt_pf"] = float("inf") if (isinstance(pf, str) and pf == "inf") else float(pf)
+    if strategy == "S1":
+        rec["atr_pct"] = float(row["atr_pct"])
+    else:
+        rec["recent_low"] = float(row["recent_low"])
+    return rec
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="jojo daily Telegram alert")
     parser.add_argument("--dry-run", action="store_true",
@@ -420,8 +460,82 @@ def main() -> int:
                         help="Bypass SPX freshness gate (testing only)")
     args = parser.parse_args()
 
-    print("daily_alert.py — placeholder; functions added in subsequent tasks")
-    print(f"  args = {vars(args)}")
+    # 1. CSV
+    print("[1/6] Loading latest cross_section CSV...")
+    try:
+        csv_df, csv_name = load_latest_cross_section_csv()
+    except RuntimeError as e:
+        print(f"  [ERROR] {e}")
+        return EXIT_CONFIG
+    print(f"  Using {csv_name}.csv ({len(csv_df)} rows)")
+
+    # 2. Regime + freshness
+    print("\n[2/6] Computing today's SPX regime...")
+    if args.skip_fresh_check:
+        spx = cross_section.load_or_fetch_spx()
+        regimes = cross_section.build_regimes(spx)
+        last_date = regimes.index[-1]
+        regime = str(regimes.loc[last_date, "regime"])
+    else:
+        regime, last_date = compute_today_regime()
+    print(f"  Regime: {regime}  |  date: {last_date.date()}")
+
+    # 3. Universe
+    universe = sorted(csv_df["ticker"].unique().tolist())
+    print(f"\n[3/6] Universe: {len(universe)} tickers from CSV")
+
+    # 4. Today's signals
+    print("\n[4/6] Scanning today's signals...")
+    s1, s2 = get_today_signals(universe)
+    print(f"  S1 raw: {len(s1)}  |  S2 raw: {len(s2)}")
+
+    # 5. Filter to top-30
+    print(f"\n[5/6] Filtering by top-{args.top} of cross_section[{regime}]...")
+    s1_top = filter_top30(csv_df, strategy="S1", regime=regime, n=args.top)
+    s2_top = filter_top30(csv_df, strategy="S2", regime=regime, n=args.top)
+    s1_alerts: list[dict] = []
+    for _, row in s1.iterrows():
+        if str(row["ticker"]) in s1_top:
+            rec = _build_alert_record(row, strategy="S1", regime=regime,
+                                      csv_df=csv_df)
+            if rec is not None:
+                s1_alerts.append(rec)
+    s2_alerts: list[dict] = []
+    for _, row in s2.iterrows():
+        if str(row["ticker"]) in s2_top:
+            rec = _build_alert_record(row, strategy="S2", regime=regime,
+                                      csv_df=csv_df)
+            if rec is not None:
+                s2_alerts.append(rec)
+    print(f"  S1 filtered: {len(s1_alerts)}  |  S2 filtered: {len(s2_alerts)}")
+
+    # 6. Send
+    print("\n[6/6] Building + sending message...")
+    message = format_message(s1_alerts, s2_alerts, regime,
+                             str(last_date.date()))
+    if not message:
+        print("  No qualifying alerts. Exiting silently (exit 0).")
+        return EXIT_OK
+
+    if args.dry_run:
+        print("--- BEGIN MESSAGE (dry run) ---")
+        print(message)
+        print("--- END MESSAGE ---")
+        return EXIT_OK
+
+    try:
+        token, chat_id = load_env()
+    except RuntimeError as e:
+        print(f"  [ERROR] {e}")
+        return EXIT_CONFIG
+
+    try:
+        send_chunked(token, chat_id, message)
+    except RuntimeError as e:
+        print(f"  [ERROR] {e}")
+        return EXIT_TELEGRAM
+
+    print("  Message sent.")
     return EXIT_OK
 
 

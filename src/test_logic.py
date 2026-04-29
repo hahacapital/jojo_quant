@@ -713,6 +713,17 @@ def test_format_message_empty_and_populated():
 
 
 # ============================================================
+# Test: format_message of empty alerts → '' (silent path)
+# ============================================================
+def test_main_silent_on_zero_alerts():
+    """Empty S1+S2 alert lists yield empty message → main() exits silently."""
+    import daily_alert
+    msg = daily_alert.format_message([], [], "bull_low_vol", "2026-04-29")
+    assert msg == ""
+    print("  PASS: zero-alert format_message returns '' (main exits silent)")
+
+
+# ============================================================
 # Main
 # ============================================================
 if __name__ == "__main__":
@@ -744,6 +755,7 @@ if __name__ == "__main__":
         ("daily_alert check_spx_fresh stale", test_check_spx_fresh_aborts_when_stale),
         ("daily_alert _md_escape", test_md_escape_special_chars),
         ("daily_alert format_message", test_format_message_empty_and_populated),
+        ("daily_alert silent on zero alerts", test_main_silent_on_zero_alerts),
     ]
 
     passed = 0
